@@ -15,7 +15,7 @@ LOGGING = {
         'default': {
             'level':'INFO',
             'class':'logging.handlers.RotatingFileHandler',
-            'filename': 'twitter_MAC.log',
+            'filename': 'twitter.log',
             'maxBytes': 1024 * 1024, # 1 mb,
             'backupCount': 15,
             'formatter': 'simple',
@@ -23,14 +23,14 @@ LOGGING = {
         'console':{
             'level': 'DEBUG',
             'class': 'logging.StreamHandler',
-            'formatter': 'verbose'
+            'formatter': 'simple'
         },
     },
     'loggers': {
         '': {
             'handlers': ['default'],
             'level': 'DEBUG',
-            'propagate': True
+            'propagate': True,
         },
         'twitter': {
             'handlers': ['default', 'console'],
