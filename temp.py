@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import re
 from nltk.internals import convert_regexp_to_nongrouping
 
@@ -17,7 +20,17 @@ URL_REGEX = re.compile(
     (\#[a-z0-9\-._~%!$&'()*+,;=:@/?]*[a-z0-9+&@#/%=~_|$])?          # Fragment
     """, re.IGNORECASE | re.VERBOSE)
 
-REPEATED_CHAR_REGEX = re.compile(r'(.)\1{2,}')
+
+
+MENTION_REGEX = re.compile(
+    ur"""
+    ([^a-zA-Z0-9_!#\$%&*@＠]|^|RT:?)
+    [@＠]
+    [a-zA-Z0-9_]{1,20}
+    (\/[a-zA-Z][a-zA-Z0-9_\-]{0,24})?
+    """, re.UNICODE | re.VERBOSE)
+
+REPEATED_CHAR_REGEX = re.compile(r'(\w)\1{2,}')
 
 def decode_html_entities(s):
 
@@ -50,14 +63,22 @@ def normalize_urls(s, incl_domain=False):
         repl = repl_func
     return URL_REGEX.sub(repl, s)
 
-def normalise_repeated_chars(s):
+def normalize_repeated_chars(s):
     return REPEATED_CHAR_REGEX.sub(r'\1\1\1', s)
 
-test = u"Check this sieeeeete http://www.google.com out http://t.co/FNkPfmii- it's great"
+def normalize_mentions(s):
+    
+    def repl_func(m):
+        return m.group(1) + '[@MENTION]'
+    
+    return MENTION_REGEX.sub(repl_func, s)
+
+test = u"Check @_@ this ＠test sieee f@@k sh@#t eete @tiao http://www.google.com out http://t.co/FNkPfmii- it's great lolololol hahahahahah"
 
 print test
 print normalize_urls(test)
-print normalise_repeated_chars(test)
+print normalize_repeated_chars(test)
+print normalize_mentions(test)
 
 exit(0)
 
