@@ -16,6 +16,7 @@ dataset_filename = 'tweeti-{0}.dist.tsv'
 
 for task in tasks:
     for modifier in dataset_file_modifiers:
+        is_training_data = not modifier
         print 'Reading [{}]...'.format(dataset_filename.format(task+modifier))
         with open(dataset_filename.format(task+modifier)) as tsv:
             if task == 'a':
@@ -32,7 +33,8 @@ for task in tasks:
                         update['$addToSet'][u'class.expressions'] = {
                             u'indices': (start, end),
                             u'expression': ' '.join(tweet.get(u'text', '').split()[start:end+1]),
-                            u'class': label
+                            u'class': label,
+                            u'training': is_training_data,
                         }
                         print tweet.get(u'text', '')
                         pprint.pprint(update)
@@ -42,4 +44,4 @@ for task in tasks:
                 for tweet_id_str, user_id_str, label in csv.reader(tsv, dialect='excel-tab'):
                     tweet_id = int(tweet_id_str)
                     print 'Updating tweet {0} with class {1}'.format(tweet_id, label)
-                    print db_labeled_tweets.update({u'_id': tweet_id}, {'$set': {u'class.overall': label}})
+                    print db_labeled_tweets.update({u'_id': tweet_id}, {'$set': {u'class.overall': label, u'class.training': is_training_data}})

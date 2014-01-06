@@ -85,9 +85,8 @@ if __name__ == '__main__':
     preprocessor = TwitterTextPreprocessor()
 
     from pymongo import MongoClient
-
+    
     client = MongoClient()
-
     db = client.twitter_database
     db_labeled_tweets = db.labeled_tweets
 
