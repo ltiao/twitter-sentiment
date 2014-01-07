@@ -1,33 +1,28 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import re
-
-from tokenizer import TwitterTokenizer
-from preprocess import TwitterTextPreprocessor
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import confusion_matrix
 from sklearn.cross_validation import KFold, cross_val_score
 
-vect = CountVectorizer(tokenizer=TwitterTokenizer(), preprocessor=TwitterTextPreprocessor())
-# analyze = vect.build_analyzer()
+from datasets import load_semeval
 
-le = LabelEncoder()
+semeval_tweets = {}
+for subset in ('train', 'test'):
+    semeval_tweets[subset] = load_semeval(subtask='b', subset=subset)
 
-from pymongo import MongoClient
+X_train, y_train = semeval_tweets['train'].data, semeval_tweets['train'].target
+X_test, y_test = semeval_tweets['test'].data, semeval_tweets['test'].target
 
-client = MongoClient()
-db = client.twitter_database
-db_labeled_tweets = db.labeled_tweets
+temp = load_semeval(subtask='b', subset='all')
 
-tweets = list(db_labeled_tweets.find({u'text': {'$exists': True}, u'class.overall': {'$exists': True}}))
+print X_train.shape
+print X_test.shape
+print temp.data.shape
 
-raw_labels = [u'neutral' if tweet['class']['overall'] in ('neutral', 'objective', 'objective-OR-neutral') else tweet['class']['overall'] for tweet in tweets if tweet['class']['overall']]
-
-X = vect.fit_transform(tweet.get(u'text') for tweet in tweets)
-y = le.fit_transform(raw_labels)
+exit(0)
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import MultinomialNB
@@ -35,19 +30,18 @@ from sklearn.svm import SVC, LinearSVC
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.dummy import DummyClassifier
+
 classifiers = (
-    DummyClassifier(strategy='most_frequent'),
-    MultinomialNB(),
-    #KNeighborsClassifier,
-    #DecisionTreeClassifier,
-    LogisticRegression(),
-    LinearSVC(),
+    ('Majority class', DummyClassifier(strategy='most_frequent')),
+    ('Multinomial Naive Bayes', MultinomialNB()),
+    # ('Maximum Entropy', LogisticRegression()),
+    # ('Linear SVM', LinearSVC()),
 )
 
 #clf = OneVsRestClassifier(SVC(probability=True))
 
-for clf in classifiers:    
-    print clf
+for name, clf in classifiers: 
+    print clf.__class__.__name__
     try:
         accuracy_10_fold = cross_val_score(clf, X, y, cv=10)
         f1_10_fold = cross_val_score(clf, X, y, cv=10, scoring='f1')
