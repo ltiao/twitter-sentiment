@@ -1,6 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import numpy as np
+
+a = np.arange(45).reshape(15, 3)
+
+print a
+
+print np.array_split(a, 8)
+
+
+exit(0)
+
+
 import re
 from nltk.internals import convert_regexp_to_nongrouping
 
