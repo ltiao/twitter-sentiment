@@ -1,36 +1,59 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+# Setup Logging
+from settings import setup_logging
+from logging import getLogger
+
+setup_logging()
+logger = getLogger('eval')
+
+# Import standard modules
+from time import time
+
+# Import 3rd-party modules
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import confusion_matrix
 from sklearn.cross_validation import KFold, cross_val_score
+from sklearn.learning_curve import learning_curve
 
+import matplotlib.pyplot as plt
 import numpy as np
-from time import time
 
-x = np.arange(45).reshape(9, 5)
 
-print x
-
-def array_split_gen(*args, **kwargs):
-    cumulative = bool(kwargs.pop('cumulative', False))
-    ary_splt = np.array_split(*args, **kwargs)
+def array_split_gen(ary, indices_or_sections, cumulative=False, *args, **kwargs):
+    ary_splt = np.array_split(ary, indices_or_sections, *args, **kwargs)
     if cumulative:
         for subary in ary_splt:
-            try:
-                cum_ary = np.vstack((cum_ary, subary))
-            except UnboundLocalError:
-                cum_ary = subary
-            yield cum_ary
+            if subary.size:
+                try:
+                    cum_ary = np.concatenate((cum_ary, subary))
+                except UnboundLocalError:
+                    cum_ary = subary
+                yield cum_ary
     else:
         for subary in ary_splt:
-            yield subary
-    
-print list(array_split_gen(x, 5, cumulative=True))
+            if subary.size:
+                yield subary
 
-exit(0)
+# print list(array_split_gen(y, 2, cumulative=False))
+# exit(0)
+def array_split_pct_gen(ary, pct=0.1, axis=0, *args, **kwargs):
+    # Signature for this function is correct, just need
+    # to use arange or linspace to calculate indices (as
+    # opposed to sections) and call array_split_gen()
+    raise NotImplementedError
+
+# def learning_curve(clf, X_train, X_test, y_train, y_test):
+#     sections = 10
+#     result = []
+#     for i, (X_sub, y_sub) in enumerate(zip(array_split_gen(X_train, sections, cumulative=True), array_split_gen(y_train, sections, cumulative=True))):
+#         clf.fit(X_sub, y_sub)
+#         #y_test_pred = clf.predict(X_test)
+#         result.append(clf.score(X_test, y_test))
+#     return np.array(result)
 
 from datasets import load_semeval
 
@@ -72,6 +95,26 @@ for name, clf in classifiers:
     t0 = time()
     pred = clf.predict(X_test)
     print 'test time: {:.3f}s'.format(time()-t0)
+    
+    train_sizes, train_score, test_score = learning_curve(clf, X_train, y_train)
+    
+    print train_score, test_score
+    
+    fig, ax = plt.subplots()
+    
+    ax.plot(train_sizes, train_score, label='Train')
+    ax.plot(train_sizes, test_score, label='Test')
+    
+    plt.xlabel('Training set size')
+    plt.ylabel('Score')
+    
+    plt.xlim(train_sizes[0], train_sizes[-1])
+    
+    plt.legend(loc='best')
+    
+    plt.savefig('{}.png'.format(clf.__class__.__name__))
+    
+    continue
     
     print classification_report(y_test, pred, target_names=semeval_all.target_names)
     print confusion_matrix(y_test, pred)

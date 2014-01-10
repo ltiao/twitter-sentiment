@@ -1,3 +1,8 @@
+import os
+import logging.config
+
+import yaml
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -37,5 +42,25 @@ LOGGING = {
             'level': 'DEBUG',
             'propagate': False,
         },
+        'eval': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
     }
 }
+
+def setup_logging(default_path='log_settings.yml', default_level=logging.INFO, env_key='LOG_CFG'):
+    """Setup logging configuration
+
+    """
+    path = default_path
+    value = os.getenv(env_key, None)
+    if value:
+        path = value
+    if os.path.exists(path):
+        with open(path, 'rt') as f:
+            config = yaml.load(f.read())
+        logging.config.dictConfig(config)
+    else:
+        logging.basicConfig(level=default_level)
