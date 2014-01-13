@@ -51,6 +51,9 @@ class MultiSub(object):
             ), *args, **kwargs
         )
 
+    def __call__(self, string, *args, **kwargs):
+        return self.sub(string, *args, **kwargs)
+
     def _repl(self, m):
         repl = self.subs.values()[m.lastindex-1]
         if callable(repl):
@@ -60,7 +63,15 @@ class MultiSub(object):
     def sub(self, string, *args, **kwargs):
         return self.regex.sub(self._repl, string, *args, **kwargs)
 
-a = MultiSub(subs={r'something': 'nothing', r'\s\w\w\w\s': lambda m: 'test'}, flags=regex.UNICODE | regex.VERBOSE | regex.IGNORECASE)
+class TwitterPreprocessor(MultiSub):
+
+    def __init__(self):
+        super(self, TwitterPreprocessor).__init__(subs={r'something': 'nothing', r'\s\w\w\w\s': lambda m: 'test'}, flags=regex.UNICODE | regex.VERBOSE | regex.IGNORECASE)
+        
+    def preprocess(self, string):
+        return self(string)
+
+a = TwitterPreprocessor()
 
 print a.sub('this is something lol smh')
 
