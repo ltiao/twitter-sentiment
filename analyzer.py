@@ -45,7 +45,7 @@ class MultiSub(object):
 
     def __init__(self, subs, *args, **kwargs):
         self.subs = subs
-        self.regex = regex.compile(r'|'.join('({pattern})'.format(pattern=convert_regexp_to_nongrouping(key)) for key in subs), *args, **kwargs)
+        self.regex = regex.compile(ur'|'.join('({pattern})'.format(pattern=convert_regexp_to_nongrouping(key)) for key in subs), *args, **kwargs)
 
     def _repl(self, m):
         repl = self.subs.values()[m.lastindex-1]
@@ -70,12 +70,7 @@ class TwitterPreprocessor(MultiSub):
             (\?[a-z0-9\-._~%!$&'()*+,;=:@/?]*[a-z0-9+&@#/%=~_|$])?          # Query
             (\#[a-z0-9\-._~%!$&'()*+,;=:@/?]*[a-z0-9+&@#/%=~_|$])?          # Fragment
             """: 'URL', 
-            ur"""
-            (?<=[^a-zA-Z0-9_!#\$%&*@＠]|^|RT:?)
-            [@＠]
-            [a-zA-Z0-9_]{1,20}
-            (\/[a-zA-Z][a-zA-Z0-9_\-]{0,24})?
-            """: '@MENTION'
+            r'(\w)\1{2,}': r'\1\1\1'
         }
         super(TwitterPreprocessor, self).__init__(subs, flags=regex.UNICODE | regex.VERBOSE | regex.IGNORECASE)
         
