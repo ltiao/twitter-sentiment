@@ -28,7 +28,6 @@ MENTION_REGEX = regex.compile(
 
 REPEATED_CHAR_REGEX = regex.compile(r'(\w)\1{2,}')
 
-
 class TwitterTextPreprocessor(object):
     
     def __init__(self):

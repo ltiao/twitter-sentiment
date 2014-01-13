@@ -3,16 +3,6 @@
 
 import numpy as np
 
-a = np.arange(45).reshape(15, 3)
-
-print a
-
-print np.array_split(a, 8)
-
-
-exit(0)
-
-
 import re
 from nltk.internals import convert_regexp_to_nongrouping
 
@@ -142,7 +132,7 @@ class Replacer(object):
 
 	def replace(self, doc):
 		return self.locator.sub(self._replace_with, doc)
-
+		
 class MultiRegex(object):
 
     def __init__(self, substitutions, *args, **kwargs):
@@ -151,7 +141,7 @@ class MultiRegex(object):
         """
         self._substitutions = substitutions
         self._regex_compiled = re.compile("|".join(self._substitutions), *args, **kwargs)
-	 	
+
 	def __call__(self, s):
 		return self.sub(s)
 

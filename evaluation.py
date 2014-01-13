@@ -50,8 +50,8 @@ from sklearn.metrics import accuracy_score, f1_score, classification_report, con
 classifiers = (
     ('Majority class', DummyClassifier(strategy='most_frequent')),
     ('Multinomial Naive Bayes', MultinomialNB()),
-    ('Stochastic Gradient Descent', SGDClassifier()),
-    ('Maximum Entropy', LogisticRegression()),
+    # ('Stochastic Gradient Descent', SGDClassifier()),
+    # ('Maximum Entropy', LogisticRegression()),
     # ('Linear SVM', LinearSVC()),
 )
 
@@ -111,7 +111,7 @@ for name, clf in classifiers:
 
         plt.savefig(filename)
         
-    continue
+    # continue
     
     t0 = time()
     clf.fit(X_train, y_train)
@@ -119,7 +119,7 @@ for name, clf in classifiers:
     print 'training time: {:.3f}s'.format(time()-t0)
     
     t0 = time()
-    pred = clf.predict(X_test)
+    pred = clf.predict_proba(X_test)
     print 'test time: {:.3f}s'.format(time()-t0)
     
     continue
