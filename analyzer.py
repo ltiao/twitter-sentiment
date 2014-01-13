@@ -45,11 +45,7 @@ class MultiSub(object):
 
     def __init__(self, subs, *args, **kwargs):
         self.subs = subs
-        self.regex = regex.compile(
-            r'|'.join(
-                '({pattern})'.format(pattern=convert_regexp_to_nongrouping(key)) for key in subs
-            ), *args, **kwargs
-        )
+        self.regex = regex.compile(r'|'.join('({pattern})'.format(pattern=convert_regexp_to_nongrouping(key)) for key in subs), *args, **kwargs)
 
     def _repl(self, m):
         repl = self.subs.values()[m.lastindex-1]
@@ -63,7 +59,25 @@ class MultiSub(object):
 class TwitterPreprocessor(MultiSub):
 
     def __init__(self):
-        super(TwitterPreprocessor, self).__init__(subs={r'something': 'nothing', r'\s\w\w\w\s': lambda m: 'test'}, flags=regex.UNICODE | regex.VERBOSE | regex.IGNORECASE)
+        subs = {
+            r"""[a-z][a-z0-9+\-.]*://                                       # Scheme
+            ([a-z0-9\-._~%!$&'()*+,;=]+@)?                                  # User
+            (?P<host>[a-z0-9\-._~%]+                                        # Named Host
+            |\[[a-f0-9:.]+\]                                                # IPv6 host
+            |\[v[a-f0-9][a-z0-9\-._~%!$&'()*+,;=:]+\][a-z0-9+&@#/%=~_|$])   # IPvFuture host
+            (:[0-9]+)?                                                      # Port
+            (/[a-z0-9\-._~%!$&'()*+,;=:@]+[a-z0-9+&@#/%=~_|$])*/?           # Path
+            (\?[a-z0-9\-._~%!$&'()*+,;=:@/?]*[a-z0-9+&@#/%=~_|$])?          # Query
+            (\#[a-z0-9\-._~%!$&'()*+,;=:@/?]*[a-z0-9+&@#/%=~_|$])?          # Fragment
+            """: 'URL', 
+            ur"""
+            (?<=[^a-zA-Z0-9_!#\$%&*@＠]|^|RT:?)
+            [@＠]
+            [a-zA-Z0-9_]{1,20}
+            (\/[a-zA-Z][a-zA-Z0-9_\-]{0,24})?
+            """: '@MENTION'
+        }
+        super(TwitterPreprocessor, self).__init__(subs, flags=regex.UNICODE | regex.VERBOSE | regex.IGNORECASE)
         
     def preprocess(self, string):
         return self.sub(string)
