@@ -70,7 +70,6 @@ class TwitterPreprocessor(MultiSub):
             (\?[a-z0-9\-._~%!$&'()*+,;=:@/?]*[a-z0-9+&@#/%=~_|$])?          # Query
             (\#[a-z0-9\-._~%!$&'()*+,;=:@/?]*[a-z0-9+&@#/%=~_|$])?          # Fragment
             """: 'URL', 
-            r'(\w)\1{2,}': r'\1\1\1'
         }
         super(TwitterPreprocessor, self).__init__(subs, flags=regex.UNICODE | regex.VERBOSE | regex.IGNORECASE)
         
