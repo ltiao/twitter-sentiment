@@ -47,7 +47,7 @@ class MultiSub(object):
         self.subs = subs
         pattern = r'|'.join('({pattern})'.format(pattern=convert_regexp_to_nongrouping(value[0])) for value in subs)
         print pattern
-        self.regex = regex.compile(pattern)
+        self.regex = regex.compile(pattern, *args, **kwargs)
 
     def _repl(self, m):
         repl = self.subs[m.lastindex-1][1]
@@ -58,7 +58,7 @@ class MultiSub(object):
     def sub(self, string):
         return self.regex.sub(self._repl, string)
 
-a = MultiSub(subs=[(r'something', 'nothing'), (r'\s\w\w\w\s', lambda m: 'test')])
+a = MultiSub(subs=[(r'something', 'nothing'), (r'\s\w\w\w\s', lambda m: 'test')], flags=regex.UNICODE | regex.VERBOSE | regex.IGNORECASE)
 
 print a.sub('this is something lol smh')
 
