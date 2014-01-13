@@ -42,23 +42,25 @@ MENTION_REGEX = regex.compile(
 REPEATED_CHAR_REGEX = regex.compile(r'(\w)\1{2,}')
 
 class MultiSub(object):
-    
+
     def __init__(self, subs, *args, **kwargs):
         self.subs = subs
-        pattern = r'|'.join('({pattern})'.format(pattern=convert_regexp_to_nongrouping(value[0])) for value in subs)
-        print pattern
-        self.regex = regex.compile(pattern, *args, **kwargs)
+        self.regex = regex.compile(
+            r'|'.join(
+                '({pattern})'.format(pattern=convert_regexp_to_nongrouping(key)) for key in subs
+            ), *args, **kwargs
+        )
 
     def _repl(self, m):
-        repl = self.subs[m.lastindex-1][1]
+        repl = self.subs.values()[m.lastindex-1]
         if callable(repl):
             return repl(m)
         return repl 
 
-    def sub(self, string):
-        return self.regex.sub(self._repl, string)
+    def sub(self, string, *args, **kwargs):
+        return self.regex.sub(self._repl, string, *args, **kwargs)
 
-a = MultiSub(subs=[(r'something', 'nothing'), (r'\s\w\w\w\s', lambda m: 'test')], flags=regex.UNICODE | regex.VERBOSE | regex.IGNORECASE)
+a = MultiSub(subs={r'something': 'nothing', r'\s\w\w\w\s': lambda m: 'test'}, flags=regex.UNICODE | regex.VERBOSE | regex.IGNORECASE)
 
 print a.sub('this is something lol smh')
 
