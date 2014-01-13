@@ -83,7 +83,11 @@ if __name__ == '__main__':
     print reduce(lambda x, y: '{0}({1})'.format(y, x), ['f', 'g', 'h'], 'x')
 
     preprocessor = TwitterTextPreprocessor()
-
+    
+    from tokenizer import TwitterTokenizer
+    
+    tok = TwitterTokenizer()
+    
     from pymongo import MongoClient
     
     client = MongoClient()
@@ -100,4 +104,4 @@ if __name__ == '__main__':
         # print normalize_mentions(text)
         # print normalize_urls(normalize_repeated_chars(normalize_mentions(decode_html_entities(text))))
         print preprocessor(text).encode('utf-8')
-        print
+        print tok(preprocessor(text).encode('utf-8'))

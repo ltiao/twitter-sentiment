@@ -8,54 +8,25 @@ from logging import getLogger
 setup_logging()
 logger = getLogger('eval')
 
-# Import standard modules
-from time import time
+logger.info('importing packages...')
 
-# Import 3rd-party modules
-from sklearn.multiclass import OneVsRestClassifier
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.preprocessing import LabelEncoder
+# Import standard packages
+from time import time, sleep
+
+# Import 3rd-party packages
+import numpy as np
+import matplotlib.pyplot as plt
+
 from sklearn.metrics import confusion_matrix
-from sklearn.cross_validation import KFold, cross_val_score
+from sklearn.cross_validation import KFold, StratifiedKFold, cross_val_score
 from sklearn.learning_curve import learning_curve
 
-import matplotlib.pyplot as plt
-import numpy as np
+from tqdm import tqdm as enumerate_progress
 
+# Import project packages
+from data import load_semeval
 
-def array_split_gen(ary, indices_or_sections, cumulative=False, *args, **kwargs):
-    ary_splt = np.array_split(ary, indices_or_sections, *args, **kwargs)
-    if cumulative:
-        for subary in ary_splt:
-            if subary.size:
-                try:
-                    cum_ary = np.concatenate((cum_ary, subary))
-                except UnboundLocalError:
-                    cum_ary = subary
-                yield cum_ary
-    else:
-        for subary in ary_splt:
-            if subary.size:
-                yield subary
-
-# print list(array_split_gen(y, 2, cumulative=False))
-# exit(0)
-def array_split_pct_gen(ary, pct=0.1, axis=0, *args, **kwargs):
-    # Signature for this function is correct, just need
-    # to use arange or linspace to calculate indices (as
-    # opposed to sections) and call array_split_gen()
-    raise NotImplementedError
-
-# def learning_curve(clf, X_train, X_test, y_train, y_test):
-#     sections = 10
-#     result = []
-#     for i, (X_sub, y_sub) in enumerate(zip(array_split_gen(X_train, sections, cumulative=True), array_split_gen(y_train, sections, cumulative=True))):
-#         clf.fit(X_sub, y_sub)
-#         #y_test_pred = clf.predict(X_test)
-#         result.append(clf.score(X_test, y_test))
-#     return np.array(result)
-
-from datasets import load_semeval
+logger.info('loading SemEval-2013 data...')
 
 semeval_tweets = {}
 for subset in ('train', 'test'):
@@ -68,51 +39,88 @@ feature_names = semeval_tweets['train'].vectorizer.get_feature_names()
 semeval_all = load_semeval(subtask='b', subset='all')
 X_all, y_all = semeval_all.data, semeval_all.target
 
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import SVC, LinearSVC
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.dummy import DummyClassifier
-from sklearn.metrics import f1_score, classification_report, confusion_matrix
+from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix, make_scorer
 
 classifiers = (
     ('Majority class', DummyClassifier(strategy='most_frequent')),
     ('Multinomial Naive Bayes', MultinomialNB()),
-    # ('Maximum Entropy', LogisticRegression()),
+    ('Stochastic Gradient Descent', SGDClassifier()),
+    ('Maximum Entropy', LogisticRegression()),
     # ('Linear SVM', LinearSVC()),
 )
 
-#clf = OneVsRestClassifier(SVC(probability=True))
+logger.info('training...')
+
+scoring_metrics = (
+    'accuracy',
+    'f1',
+    # 'precision',
+    # 'recall',
+    # 'roc_auc',
+)
 
 for name, clf in classifiers: 
-    print 'Training classfier [{}]: {}'.format(name, clf)
+    logger.info('evaluating [{}] classifier'.format(name))
+    logger.debug(clf)
+    
+    # skf_cv = StratifiedKFold(labels=y_all, n_folds=10)
+    
+    logger.info('computing cross-validated metrics')
+    logger.debug('metrics: {}'.format(scoring_metrics))
+    
+    cross_val_scores = dict((metric, cross_val_score(clf, X_all, y_all, cv=10, scoring=metric)) for metric in scoring_metrics)
+    
+    logger.info('generating learning curve data for metrics')
+    learning_curves = dict((metric, learning_curve(clf, X_all, y_all, cv=10, scoring=metric)) for metric in scoring_metrics)
+    
+    for metric in scoring_metrics:
+        logger.info('{name}: {mean:.3f} ({std:.3f})'.format(
+                name = metric, 
+                mean = cross_val_scores[metric].mean(), 
+                std = cross_val_scores[metric].std()
+            )
+        )
+        
+        logger.info('plotting learning curve for [{}] classifier with respect to metric [{}]'.format(name, metric))
+        
+        train_sizes, train_scores, test_scores = learning_curves[metric]
+        
+        fig, ax = plt.subplots()
+
+        ax.plot(train_sizes, train_scores, label='Trainings set {}-score'.format(metric))
+        ax.plot(train_sizes, test_scores, label='Test set {}-score'.format(metric))
+
+        plt.title('Learning Curve of {} classifer'.format(name))
+
+        plt.xlabel('Training set size')
+        plt.ylabel('Score')
+
+        plt.xlim(train_sizes[0], train_sizes[-1])
+
+        plt.legend(loc='best')
+
+        filename = '{name}_{metric}.png'.format(name=clf.__class__.__name__, metric=metric)
+
+        logger.info('saving to file [{}]'.format(filename))
+
+        plt.savefig(filename)
+        
+    continue
     
     t0 = time()
     clf.fit(X_train, y_train)
+    
     print 'training time: {:.3f}s'.format(time()-t0)
     
     t0 = time()
     pred = clf.predict(X_test)
     print 'test time: {:.3f}s'.format(time()-t0)
-    
-    train_sizes, train_score, test_score = learning_curve(clf, X_train, y_train)
-    
-    print train_score, test_score
-    
-    fig, ax = plt.subplots()
-    
-    ax.plot(train_sizes, train_score, label='Train')
-    ax.plot(train_sizes, test_score, label='Test')
-    
-    plt.xlabel('Training set size')
-    plt.ylabel('Score')
-    
-    plt.xlim(train_sizes[0], train_sizes[-1])
-    
-    plt.legend(loc='best')
-    
-    plt.savefig('{}.png'.format(clf.__class__.__name__))
     
     continue
     
