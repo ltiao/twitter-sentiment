@@ -78,7 +78,7 @@ class TwitterPreprocessor(MultiSub):
 
 a = TwitterPreprocessor()
 
-print a.preprocess('this is something lol smh')
+print a.preprocess('this is something http://t.co/52in3rn2i3 lol smh')
 
 exit(0)
 def decode_html_entities(string, repl=None, count=0):
