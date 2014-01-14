@@ -12,6 +12,7 @@ logger.info('importing packages...')
 
 # Import standard packages
 from time import time, sleep
+from pprint import pprint, pformat
 
 # Import 3rd-party packages
 import numpy as np
@@ -51,8 +52,8 @@ classifiers = (
     ('Majority class', DummyClassifier(strategy='most_frequent')),
     ('Multinomial Naive Bayes', MultinomialNB()),
     # ('Stochastic Gradient Descent', SGDClassifier()),
-    # ('Maximum Entropy', LogisticRegression()),
-    # ('Linear SVM', LinearSVC()),
+    ('Maximum Entropy', LogisticRegression()),
+    ('Linear SVM', LinearSVC()),
 )
 
 logger.info('training...')
@@ -70,6 +71,42 @@ for name, clf in classifiers:
     logger.debug(clf)
     
     # skf_cv = StratifiedKFold(labels=y_all, n_folds=10)
+    t0 = time()
+    clf.fit(X_train, y_train)
+    logger.info('training time: {:.3f}s'.format(time()-t0))
+    
+    t0 = time()
+    pred = clf.predict(X_test)
+    pred_proba = clf.predict_proba(X_test)
+    logger.info('test time: {:.3f}s'.format(time()-t0))
+    
+    logger.info('\n' + format(classification_report(y_test, pred, target_names=semeval_tweets['test'].target_names)))
+    
+    errors = (pred == y_test)
+        
+    for probs, predicted, true, text, vect in zip(pred_proba[errors], pred[errors], y_test[errors], semeval_tweets['test'].ids[errors], X_test[errors].toarray()):
+        # logger.info(np.asarray(semeval_tweets['test'].vectorizer.get_feature_names())[np.nonzero(vect)])
+        logger.info('Text: {}'.format(text))
+        logger.info('Probabilities: [{}] | Pred: {} | True: {}'.format(
+                ' '.join('P({})={}'.format(semeval_tweets['test'].target_names[i], prob) for i, prob in enumerate(probs)),
+                semeval_tweets['test'].target_names[predicted], 
+                semeval_tweets['test'].target_names[true], 
+            )
+        )
+        logger.info('')
+    
+    if hasattr(clf, 'coef_'):
+        logger.info('Dimensionality (#features): {}'.format(clf.coef_.shape[1]))
+        n_keywords = 100
+        logger.info('top {} keywords per class'.format(n_keywords))
+        for i, klass in enumerate(semeval_all.target_names):
+            top_n = np.argsort(clf.coef_[i])[-n_keywords:]
+            top_n_dict = dict(zip(np.asarray(feature_names)[top_n], clf.coef_[i][top_n]))
+            logger.info('{}:'.format(klass))
+            for feature in sorted(top_n_dict, key=lambda k: top_n_dict[k], reverse=True):
+                logger.info(' * {:.<20}{:.>16}'.format(feature, top_n_dict[feature]))
+    
+    continue
     
     logger.info('computing cross-validated metrics')
     logger.debug('metrics: {}'.format(scoring_metrics))
@@ -111,29 +148,12 @@ for name, clf in classifiers:
 
         plt.savefig(filename)
         
-    # continue
-    
-    t0 = time()
-    clf.fit(X_train, y_train)
-    
-    print 'training time: {:.3f}s'.format(time()-t0)
-    
-    t0 = time()
-    pred = clf.predict_proba(X_test)
-    print 'test time: {:.3f}s'.format(time()-t0)
-    
     continue
     
     print classification_report(y_test, pred, target_names=semeval_all.target_names)
     print confusion_matrix(y_test, pred)
     
-    if hasattr(clf, 'coef_'):
-        print 'Dimensionality (#features): {}'.format(clf.coef_.shape[1])
-        n_keywords = 100
-        print 'top {} keywords per class'.format(n_keywords)
-        for i, klass in enumerate(semeval_all.target_names):
-            top_n = np.argsort(clf.coef_[i])[-n_keywords:]
-            print '{}: {}'.format(klass, np.asarray(feature_names)[top_n])
+    
     
     # try:
     #     accuracy_10_fold = cross_val_score(clf, X, y, cv=10)
