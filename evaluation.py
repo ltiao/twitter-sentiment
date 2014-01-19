@@ -19,6 +19,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from sklearn.metrics import confusion_matrix
+from sklearn.metrics.metrics import _check_clf_targets
+from sklearn.utils.multiclass import unique_labels
 from sklearn.cross_validation import KFold, StratifiedKFold, cross_val_score
 from sklearn.learning_curve import learning_curve
 
@@ -26,6 +28,40 @@ from tqdm import tqdm as enumerate_progress
 
 # Import project packages
 from data import load_semeval
+
+def confused_instances(true, pred, y_true, y_pred, indices=False):
+    mask = np.logical_and(y_true==true, y_pred==pred)
+    if indices:
+        return np.where(mask)
+    else:
+        return mask
+        
+def confusion_matrix_instances(y_true, y_pred, labels=None):
+    y_type, y_true, y_pred = _check_clf_targets(y_true, y_pred)
+    if y_type not in ("binary", "multiclass"):
+        raise ValueError("%s is not supported" % y_type)
+
+    if labels is None:
+        labels = unique_labels(y_true, y_pred)
+    else:
+        labels = np.asarray(labels)
+
+    n_labels = labels.size
+    label_to_ind = dict((y, x) for x, y in enumerate(labels))
+    # convert yt, yp into index
+    y_pred = np.array([label_to_ind.get(x, n_labels + 1) for x in y_pred])
+    y_true = np.array([label_to_ind.get(x, n_labels + 1) for x in y_true])
+
+    # intersect y_pred, y_true with labels, eliminate items not in labels
+    ind = np.logical_and(y_pred < n_labels, y_true < n_labels)
+    y_pred = y_pred[ind]
+    y_true = y_true[ind]
+
+    CM = np.zeros((n_labels, n_labels, y_true.shape[0]), dtype=np.bool)
+
+    CM[y_true, y_pred, np.arange(y_true.shape[0])] = True
+
+    return CM
 
 logger.info('loading SemEval-2013 data...')
 
@@ -49,11 +85,11 @@ from sklearn.dummy import DummyClassifier
 from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix, make_scorer
 
 classifiers = (
-    ('Majority class', DummyClassifier(strategy='most_frequent')),
+    # ('Majority class', DummyClassifier(strategy='most_frequent')),
     ('Multinomial Naive Bayes', MultinomialNB()),
     # ('Stochastic Gradient Descent', SGDClassifier()),
     ('Maximum Entropy', LogisticRegression()),
-    ('Linear SVM', LinearSVC()),
+    # ('Linear SVM', LinearSVC()),
 )
 
 logger.info('training...')
@@ -66,9 +102,23 @@ scoring_metrics = (
     # 'roc_auc',
 )
 
+try:
+    from pymongo import MongoClient
+except ImportError:
+    raise ImportError('pymongo must be installed to retrieve data from MongoDB')
+
+client = MongoClient()
+db = client.twitter_database
+db_labeled_tweets = db.labeled_tweets
+
 for name, clf in classifiers: 
     logger.info('evaluating [{}] classifier'.format(name))
     logger.debug(clf)
+    
+    scorer = make_scorer(confusion_matrix)
+    print cross_val_score(clf, X_all, y_all, cv=10, scoring=scorer)
+    
+    continue
     
     # skf_cv = StratifiedKFold(labels=y_all, n_folds=10)
     t0 = time()
@@ -77,14 +127,50 @@ for name, clf in classifiers:
     
     t0 = time()
     pred = clf.predict(X_test)
-    pred_proba = clf.predict_proba(X_test)
+    
+    try:
+        pred_proba = clf.predict_proba(X_test)
+    except AttributeError:
+        pred_proba = clf.decision_function(X_test)
     logger.info('test time: {:.3f}s'.format(time()-t0))
     
     logger.info('\n' + format(classification_report(y_test, pred, target_names=semeval_tweets['test'].target_names)))
+
+    # confusion = np.array([[np.logical_and(y_true==r, y_pred==c) for c in xrange(3)] for r in xrange(3)])
+
+    target_names = semeval_tweets['test'].target_names
+
+    for r in xrange(3):
+        for c in xrange(3):
+
+            if r == c: continue
+
+            logger.info('Examining instances belonging to class {} but classified as {}...'.format(target_names[r], target_names[c]))
+            mask = np.logical_and(y_test==r, pred==c)
+
+            for probs, predicted, true, text in zip(pred_proba[mask], pred[mask], y_test[mask], semeval_tweets['test'].texts[mask]):
+                logger.info('Text: {}'.format(text))
+                logger.info(' True: [{}] | Pred: [{}] | Probabilities: [{}]'.format(
+                        target_names[r], 
+                        target_names[c],
+                        ' '.join('P({})={}'.format(semeval_tweets['test'].target_names[i], prob) for i, prob in enumerate(probs)), 
+                    )
+                )
+                logger.info('')
+
+    continue
+
+    ### ERROR ANALYSIS ###
+    errors = (pred != y_test)
     
-    errors = (pred == y_test)
-        
-    for probs, predicted, true, text, vect in zip(pred_proba[errors], pred[errors], y_test[errors], semeval_tweets['test'].ids[errors], X_test[errors].toarray()):
+    error_ids = list(semeval_tweets['test'].ids[errors])
+    logger.info('{} of {} errors are replies'.format(
+            db_labeled_tweets.find({u'_id': {'$in': error_ids}, u'in_reply_to_status_id': {'$ne': None}}).count(),
+            len(error_ids),
+        )
+    )
+    
+    for probs, predicted, true, text, vect in zip(pred_proba[errors], pred[errors], y_test[errors], semeval_tweets['test'].texts[errors], X_test[errors].toarray()):
         # logger.info(np.asarray(semeval_tweets['test'].vectorizer.get_feature_names())[np.nonzero(vect)])
         logger.info('Text: {}'.format(text))
         logger.info('Probabilities: [{}] | Pred: {} | True: {}'.format(
@@ -95,6 +181,8 @@ for name, clf in classifiers:
         )
         logger.info('')
     
+    ### ERROR ANALYSIS END ###
+
     if hasattr(clf, 'coef_'):
         logger.info('Dimensionality (#features): {}'.format(clf.coef_.shape[1]))
         n_keywords = 100

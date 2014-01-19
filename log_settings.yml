@@ -16,7 +16,7 @@ handlers:
     default:
         backupCount: 15
         class: logging.handlers.RotatingFileHandler
-        filename: twitter.log
+        filename: logs/twitter.log
         formatter: simple
         level: INFO
         maxBytes: 1048576
@@ -28,6 +28,7 @@ loggers:
         propagate: true
     eval:
         handlers:
+        - default
         - console
         level: DEBUG
         propagate: false

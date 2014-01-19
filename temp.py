@@ -2,6 +2,41 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
+from sklearn.metrics import confusion_matrix
+from itertools import product
+
+y_true, y_pred = np.array([0, 1, 0, 2, 1, 1]), np.array([0, 0, 0, 2, 1, 2])
+confusion = np.array([[np.logical_and(y_true==r, y_pred==c) for c in xrange(3)] for r in xrange(3)])
+
+print np.sum(confusion, axis=2)
+print confusion_matrix(y_true, y_pred)
+
+print y_pred[confusion[0, 0]]
+
+exit(0)
+
+print y_true < 2
+
+print confusion_matrix(y_true, y_pred)
+
+from scipy.sparse import coo_matrix
+from sklearn.utils.multiclass import unique_labels
+
+print np.asarray(
+    coo_matrix(
+        (
+            np.ones(
+                y_true.shape[0], dtype=np.int
+            ), 
+            (y_true, y_pred)
+        ), 
+        shape=(3, 3)
+    ).todense()
+)
+
+
+exit(0)
+
 
 import re
 from nltk.internals import convert_regexp_to_nongrouping
