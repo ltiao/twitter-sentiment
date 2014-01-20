@@ -16,6 +16,7 @@ from pprint import pprint, pformat
 
 # Import 3rd-party packages
 import numpy as np
+import scipy as sp
 import matplotlib.pyplot as plt
 
 from sklearn.metrics import confusion_matrix
@@ -104,6 +105,20 @@ def print_coef_dict(coef_dict_=None, *args, **kwargs):
         for feature in sorted(coef_dict_[label], key=lambda k: coef_dict_[label][k], reverse=True):
             print ' * {:.<20}{:.>16}'.format(feature, coef_dict_[label][feature])
 
+def train_test_concat(X_train, X_test, y_train, y_test):
+    if sp.sparse.issparse(X_train) and sp.sparse.issparse(X_test):
+        vstack = sp.sparse.vstack
+    else:
+        vstack = np.vstack
+        
+    return vstack((X_train, X_test)), np.concatenate((y_train, y_test))
+
+def train_test_cv_generator(X_train, X_test, y_train, y_test):
+    test_start_index = X_train.shape[0]
+    test_end_index = test_start_index + X_test.shape[0]
+    # not a very exciting generator. only has one item
+    yield (np.arange(test_start_index), np.arange(test_start_index, test_end_index))
+
 logger.info('loading SemEval-2013 data...')
 
 semeval_tweets = {}
@@ -112,10 +127,13 @@ for subset in ('train', 'test'):
 
 X_train, y_train = semeval_tweets['train'].data, semeval_tweets['train'].target
 X_test, y_test = semeval_tweets['test'].data, semeval_tweets['test'].target
+
+X_all, y_all = train_test_concat(X_train, X_test, y_train, y_test)
+
 feature_names = semeval_tweets['train'].vectorizer.get_feature_names()
 
-semeval_all = load_semeval(subtask='b', subset='all')
-X_all, y_all = semeval_all.data, semeval_all.target
+# semeval_all = load_semeval(subtask='b', subset='all')
+# X_all, y_all = semeval_all.data, semeval_all.target
 
 from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.naive_bayes import MultinomialNB
@@ -124,6 +142,14 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.dummy import DummyClassifier
 from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix, make_scorer
+
+print cross_val_score(LogisticRegression(), X_all, y_all, cv=train_test_cv_generator(X_train, X_test, y_train, y_test), scoring='accuracy')
+
+clf = LogisticRegression()
+clf.fit(X_train, y_train)
+print clf.score(X_test, y_test)
+
+exit(0)
 
 classifiers = (
     # ('Majority class', DummyClassifier(strategy='most_frequent')),
