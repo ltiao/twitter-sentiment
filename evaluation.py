@@ -24,6 +24,7 @@ from sklearn.utils.multiclass import unique_labels
 from sklearn.cross_validation import KFold, StratifiedKFold, cross_val_score
 from sklearn.learning_curve import learning_curve
 
+import yaml, json
 from tqdm import tqdm as enumerate_progress
 
 # Import project packages
@@ -63,6 +64,46 @@ def confusion_matrix_instances(y_true, y_pred, labels=None):
 
     return CM
 
+## Not really sure where this is going yet...
+def confusion_matrix_instances_dict(y_true, y_pred, labels=None, target_names=None):
+    confusion_matrix_instances_ = confusion_matrix_instances(y_true, y_pred, labels)
+    return dict((target_names[i], dict(zip(target_names, true_labels))) for i, true_labels in enumerate(confusion_matrix_instances_))
+
+# TODO: Decide whether to throw exception or
+# some other way to fail gracefully if
+# initial condition not met
+def coef_dict(clf, top_n=None, feature_names=None, target_names=None):
+    if hasattr(clf, 'coef_'):
+        logger.info(clf.coef_.shape)
+        result = {}
+        for i, label_coefs in enumerate(clf.coef_):
+            try:
+                label = target_names[i]
+            except KeyError:
+                label = i
+            feature_names_array = np.asarray(feature_names)
+            if top_n:
+                top_n_indices = np.argsort(label_coefs)[-top_n:]
+                feature_names_array = feature_names_array[top_n_indices]
+                label_coefs = label_coefs[top_n_indices]
+            result[label] = dict(zip(feature_names_array, label_coefs))
+            
+        return result
+
+# TODO: Standardize print-related functions by incorporating
+# a stream argument so it may be printed to an arbitrary file
+# or even string variable
+# TODO: Calculate the max width of a feature name and add argument
+# to define precision of floating-point number
+def print_coef_dict(coef_dict_=None, *args, **kwargs):
+    if not coef_dict_:
+        coef_dict_ = coef_dict(*args, **kwargs)
+
+    for label in coef_dict_:
+        print label
+        for feature in sorted(coef_dict_[label], key=lambda k: coef_dict_[label][k], reverse=True):
+            print ' * {:.<20}{:.>16}'.format(feature, coef_dict_[label][feature])
+
 logger.info('loading SemEval-2013 data...')
 
 semeval_tweets = {}
@@ -86,7 +127,7 @@ from sklearn.metrics import accuracy_score, f1_score, classification_report, con
 
 classifiers = (
     # ('Majority class', DummyClassifier(strategy='most_frequent')),
-    ('Multinomial Naive Bayes', MultinomialNB()),
+    # ('Multinomial Naive Bayes', MultinomialNB()),
     # ('Stochastic Gradient Descent', SGDClassifier()),
     ('Maximum Entropy', LogisticRegression()),
     # ('Linear SVM', LinearSVC()),
@@ -115,11 +156,6 @@ for name, clf in classifiers:
     logger.info('evaluating [{}] classifier'.format(name))
     logger.debug(clf)
     
-    scorer = make_scorer(confusion_matrix)
-    print cross_val_score(clf, X_all, y_all, cv=10, scoring=scorer)
-    
-    continue
-    
     # skf_cv = StratifiedKFold(labels=y_all, n_folds=10)
     t0 = time()
     clf.fit(X_train, y_train)
@@ -128,37 +164,41 @@ for name, clf in classifiers:
     t0 = time()
     pred = clf.predict(X_test)
     
+    coef_dict_ = coef_dict(clf, top_n=5, feature_names=feature_names, target_names=semeval_tweets['test'].target_names)
+    
     try:
         pred_proba = clf.predict_proba(X_test)
     except AttributeError:
         pred_proba = clf.decision_function(X_test)
     logger.info('test time: {:.3f}s'.format(time()-t0))
     
-    logger.info('\n' + format(classification_report(y_test, pred, target_names=semeval_tweets['test'].target_names)))
-
-    # confusion = np.array([[np.logical_and(y_true==r, y_pred==c) for c in xrange(3)] for r in xrange(3)])
+    logger.info('Classificaton Report:\n{}'.format(classification_report(y_test, pred, target_names=semeval_tweets['test'].target_names)))
 
     target_names = semeval_tweets['test'].target_names
 
+    confusion_matrix_instances_ = confusion_matrix_instances(y_test, pred)
+    logger.info('Confusion Matrix:\n{}'.format(confusion_matrix(y_test, pred)))
+
+    confusion_dict = {}
     for r in xrange(3):
+        confusion_dict[target_names[r]] = {}
         for c in xrange(3):
-
-            if r == c: continue
-
+            confusion_dict[target_names[r]][target_names[c]] = []
+                        
             logger.info('Examining instances belonging to class {} but classified as {}...'.format(target_names[r], target_names[c]))
             mask = np.logical_and(y_test==r, pred==c)
+            indices = np.where(mask)
 
-            for probs, predicted, true, text in zip(pred_proba[mask], pred[mask], y_test[mask], semeval_tweets['test'].texts[mask]):
-                logger.info('Text: {}'.format(text))
-                logger.info(' True: [{}] | Pred: [{}] | Probabilities: [{}]'.format(
-                        target_names[r], 
-                        target_names[c],
-                        ' '.join('P({})={}'.format(semeval_tweets['test'].target_names[i], prob) for i, prob in enumerate(probs)), 
+            for probs, predicted, true, doc in zip(pred_proba[mask], pred[mask], y_test[mask], semeval_tweets['test'].docs[mask]):
+                
+                confusion_dict[target_names[r]][target_names[c]].append(
+                    dict(
+                        text=doc.get(u'text'),
+                        # true=target_names[r],
+                        # pred=target_names[c],
+                        probs=dict((target_names[i], prob) for i, prob in enumerate(probs))
                     )
                 )
-                logger.info('')
-
-    continue
 
     ### ERROR ANALYSIS ###
     errors = (pred != y_test)
