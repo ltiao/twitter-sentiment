@@ -25,6 +25,19 @@ from sklearn.utils.multiclass import unique_labels
 from sklearn.cross_validation import KFold, StratifiedKFold, cross_val_score
 from sklearn.learning_curve import learning_curve
 
+from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.svm import SVC, LinearSVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.dummy import DummyClassifier
+from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix, make_scorer
+
+from sklearn.base import is_classifier
+from sklearn.cross_validation import check_cv
+from sklearn.utils import check_arrays
+# from sklearn.metrics.scorer import check_scoring
+
 import yaml, json
 from tqdm import tqdm as enumerate_progress
 
@@ -75,7 +88,6 @@ def confusion_matrix_instances_dict(y_true, y_pred, labels=None, target_names=No
 # initial condition not met
 def coef_dict(clf, top_n=None, feature_names=None, target_names=None):
     if hasattr(clf, 'coef_'):
-        logger.info(clf.coef_.shape)
         result = {}
         for i, label_coefs in enumerate(clf.coef_):
             try:
@@ -106,11 +118,12 @@ def print_coef_dict(coef_dict_=None, *args, **kwargs):
             print ' * {:.<20}{:.>16}'.format(feature, coef_dict_[label][feature])
 
 def train_test_concat(X_train, X_test, y_train, y_test):
+    # TODO: Throw exception or normalise on XOR case
     if sp.sparse.issparse(X_train) and sp.sparse.issparse(X_test):
         vstack = sp.sparse.vstack
     else:
         vstack = np.vstack
-        
+
     return vstack((X_train, X_test)), np.concatenate((y_train, y_test))
 
 def train_test_cv_generator(X_train, X_test, y_train, y_test):
@@ -118,6 +131,42 @@ def train_test_cv_generator(X_train, X_test, y_train, y_test):
     test_end_index = test_start_index + X_test.shape[0]
     # not a very exciting generator. only has one item
     yield (np.arange(test_start_index), np.arange(test_start_index, test_end_index))
+
+def benchmark(clf, X, y, cv=None):
+    X, y = check_arrays(X, y, sparse_format='csr', allow_lists=True)
+    cv = check_cv(cv, X, y, classifier=is_classifier(clf))
+    
+    # learning_curve_ = learning_curve(clf, X_all, y_all, cv=cv)
+    
+    train_times = []
+    test_times = []
+    confusion_matrices = []
+    confusion_matrix_indices = []
+    coefs = []
+    for train, test in cv:
+        X_train, y_train = X[train], y[train]
+        X_test, y_test = X[test], y[test]
+        
+        t0 = time()
+        clf.fit(X_train, y_train)
+        train_times.append(time()-t0)
+        
+        t0 = time()
+        y_pred = clf.predict(X_test)
+        test_times.append(time()-t0)
+    
+        confusion_matrices.append(confusion_matrix(y_test, y_pred))
+        confusion_matrix_indices.append(np.array([[test[pred] for pred in true] for true in confusion_matrix_instances(y_test, y_pred)]))
+    
+        coefs.append(clf.coef_)
+    
+    return dict(
+        train_times = np.array(train_times),
+        test_times = np.array(test_times),
+        confusion_matrices = np.array(confusion_matrices),
+        confusion_matrix_indices = np.array(confusion_matrix_indices),
+        coefs = np.array(coefs)
+    )
 
 logger.info('loading SemEval-2013 data...')
 
@@ -132,24 +181,22 @@ X_all, y_all = train_test_concat(X_train, X_test, y_train, y_test)
 
 feature_names = semeval_tweets['train'].vectorizer.get_feature_names()
 
-# semeval_all = load_semeval(subtask='b', subset='all')
-# X_all, y_all = semeval_all.data, semeval_all.target
+semeval_all = load_semeval(subtask='b', subset='all')
+X_all, y_all = semeval_all.data, semeval_all.target
 
-from sklearn.linear_model import LogisticRegression, SGDClassifier
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.svm import SVC, LinearSVC
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.dummy import DummyClassifier
-from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix, make_scorer
+result = benchmark(LogisticRegression(), X_all, y_all, cv=10)
 
-print cross_val_score(LogisticRegression(), X_all, y_all, cv=train_test_cv_generator(X_train, X_test, y_train, y_test), scoring='accuracy')
-
-clf = LogisticRegression()
-clf.fit(X_train, y_train)
-print clf.score(X_test, y_test)
+print result['coefs'][0]
+print result['coefs'][1]
 
 exit(0)
+# print cross_val_score(LogisticRegression(), X_all, y_all, cv=train_test_cv_generator(X_train, X_test, y_train, y_test), scoring='accuracy')
+# 
+# clf = LogisticRegression()
+# clf.fit(X_train, y_train)
+# print clf.score(X_test, y_test)
+# 
+# exit(0)
 
 classifiers = (
     # ('Majority class', DummyClassifier(strategy='most_frequent')),
