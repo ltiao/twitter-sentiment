@@ -16,19 +16,17 @@ logger = getLogger('dataset')
 from analyzer import preprocess, tokenize
 
 from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction import DictVectorizer
+
 from sklearn.preprocessing import LabelEncoder
+from sklearn.datasets.base import Bunch
+
+from sklearn.base import BaseEstimator, TransformerMixin
 
 import numpy as np
+import scipy as sp
 
-class Bunch(dict):
-    """Container object for datasets: dictionary-like object that
-       exposes its keys as attributes."""
-
-    def __init__(self, **kwargs):
-        dict.__init__(self, kwargs)
-        self.__dict__ = self
-
-def load_semeval(subtask='b', subset='all'):
+def load_semeval_vectorized(subtask='b', subset='all'):
     try:
         from pymongo import MongoClient
     except ImportError:
@@ -92,15 +90,83 @@ def load_semeval(subtask='b', subset='all'):
             docs = np.asarray(docs)
         )
 
+def load_semeval(subtask='b', subset='all'):
+    try:
+        from pymongo import MongoClient
+    except ImportError:
+        raise ImportError('pymongo must be installed to retrieve data from MongoDB')
 
+    client = MongoClient()
+    db = client.twitter_database
+    db_labeled_tweets = db.labeled_tweets
+
+    if subtask == 'a':
+        raise NotImplementedError('SemEval-2013 Task 2 Subtask A data not yet supported')
+    elif subtask == 'b':
+        
+        q = {
+            u'text': {'$exists': True}, 
+            u'class.overall': {'$exists': True}
+        }
+    
+        if subset in ('train', 'test'):
+            q[u'class.training'] = (subset == 'train')
+        elif subset != 'all':
+            raise ValueError("'{}' is not a valid subset: should be one of ['train', 'test', 'all']".format(subset))
+
+        return db_labeled_tweets.find(q)
+    else:
+        raise ValueError("'{}' is not a valid subtask: should be one of ['a', 'b']".format(subtask))
+
+class TweetVectorizer(BaseEstimator, TransformerMixin):
+    
+    def __init__(self, count_vectorizer, dict_vectorizer):
+        self.count_vect = count_vect
+        self.dict_vect = dict_vect
+
+    def fit(self, X, y=None):
+        self.count_vect.fit(x.get(u'text') for x in X)
+        self.dict_vect.fit(self._features_dict(x) for x in X)
+        self.feature_names_ = self.count_vect.get_feature_names()
+        self.feature_names_.extend(self.dict_vect.get_feature_names())
+        return self
+
+    def transform(self, X, y=None):
+        X1 = self.count_vect.transform(x.get(u'text') for x in X)
+        X2 = self.dict_vect.transform(self._features_dict(x) for x in X)
+        return sp.sparse.hstack((X1, X2))
+        
+    def inverse_transform(self, X):
+        raise NotImplementedError('Does not support inverse transform yet.')
+              
+    def get_feature_names(self):
+        return self.feature_names_
+
+    def _features_dict(self, tweet):
+        analyzer = self.count_vect.build_analyzer()
+        tweet_text = tweet.get(u'text')
+        tokens = analyzer(tweet_text)
+        is_reply = tweet.get(u'in_reply_to_status_id', None) is not None
+        num_tokens = len(tokens)
+        return dict(
+            is_reply = is_reply,
+            num_tokens = num_tokens,
+        )
 
 if __name__ == '__main__':
     
     twitter_data = load_semeval(subtask='b', subset='all')
     
-    print twitter_data.vectorizer.get_feature_names()
+    vec1 = CountVectorizer(tokenizer=tokenize, preprocessor=preprocess)
+    vec2 = DictVectorizer()
+    le = LabelEncoder()
+    
+    vec = TweetVectorizer(vec1, vec2)
+    print vec.fit_transform(list(twitter_data[:10])).shape
+    print vec.get_feature_names()
     
     exit(0)
+    
     import matplotlib.pyplot as plt
     import numpy as np
 
