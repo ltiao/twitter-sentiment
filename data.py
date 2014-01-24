@@ -120,9 +120,19 @@ def load_semeval(subtask='b', subset='all'):
 
 class TweetVectorizer(BaseEstimator, TransformerMixin):
     
-    def __init__(self, count_vectorizer, dict_vectorizer):
-        self.count_vect = count_vect
-        self.dict_vect = dict_vect
+    def __init__(self, count_vectorizer=None, dict_vectorizer=None):
+        self.count_vect = self.build_count_vectorizer(count_vectorizer)
+        self.dict_vect = self.build_dict_vectorizer(dict_vectorizer)
+
+    def build_count_vectorizer(self, count_vect):
+        if count_vect is not None:
+            return count_vect
+        return CountVectorizer()
+
+    def build_dict_vectorizer(self, dict_vect):
+        if dict_vect is not None:
+            return dict_vect
+        return DictVectorizer()
 
     def fit(self, X, y=None):
         self.count_vect.fit(x.get(u'text') for x in X)
@@ -138,9 +148,15 @@ class TweetVectorizer(BaseEstimator, TransformerMixin):
         
     def inverse_transform(self, X):
         raise NotImplementedError('Does not support inverse transform yet.')
-              
+
     def get_feature_names(self):
         return self.feature_names_
+        
+    def get_count_vectorizer(self):
+        return self.count_vect
+        
+    def get_dict_vectorizer(self):
+        return self.dict_vect
 
     def _features_dict(self, tweet):
         analyzer = self.count_vect.build_analyzer()
