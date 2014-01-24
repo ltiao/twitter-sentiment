@@ -1,6 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+# TODO: 
+#   * Documentation
+#   * Doctests
+#   * Implement Inverse Transform
+#   * Unit tests
+
 # Setup Logging
 from settings import setup_logging
 from logging import getLogger
@@ -11,8 +17,6 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 import numpy as np
 import scipy as sp
-
-from analyzer import preprocess, tokenize
 
 class CountDictCombinedVectorizer(BaseEstimator, TransformerMixin):
     
@@ -55,7 +59,8 @@ class CountDictCombinedVectorizer(BaseEstimator, TransformerMixin):
         except UnboundLocalError:
             try: return X1
             except UnboundLocalError: return X2
-        
+    
+    # TODO
     def inverse_transform(self, X):
         raise NotImplementedError('Inverse Transform not implemented')
 
@@ -69,27 +74,28 @@ class CountDictCombinedVectorizer(BaseEstimator, TransformerMixin):
         return self.dict_vect
 
     def _string_generator(self, X):
-        return (self._string_value(x) for x in X)
+        return (self.string_value(x) for x in X)
 
     def _features_dicts_generator(self, X):
-        return (self._features_dict(x) for x in X)
+        return (self.features_dict(x) for x in X)
 
-    def _string_value(self, x):
+    def string_value(self, x):
         raise NotImplementedError('String value not defined')
 
-    def _features_dict(self, x):
+    def features_dict(self, x):
         raise NotImplementedError('Feature extraction dictionary not defined')
         
 class TweetVectorizer(CountDictCombinedVectorizer):
 
-    def _string_value(self, x):
+    def string_value(self, x):
         return x.get(u'text')
 
-    def _features_dict(self, x):
+    def features_dict(self, x):
         if self.count_vect is not None:
             analyzer = self.count_vect.build_analyzer()
         else:
-            analyzer = lambda s: s.split()
+            from analyzer import preprocess, tokenize
+            analyzer = lambda s: tokenize(preprocess(s))
         tweet_text = x.get(u'text')
         tokens = analyzer(tweet_text)
         is_reply = x.get(u'in_reply_to_status_id', None) is not None
@@ -102,6 +108,7 @@ class TweetVectorizer(CountDictCombinedVectorizer):
 if __name__ == '__main__':
 
     from data import load_semeval
+    from analyzer import preprocess, tokenize
 
     from sklearn.feature_extraction.text import CountVectorizer
     from sklearn.feature_extraction import DictVectorizer
