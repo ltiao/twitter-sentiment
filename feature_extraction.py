@@ -54,6 +54,7 @@ class CountDictCombinedVectorizer(BaseEstimator, TransformerMixin):
         if self.dict_vect is not None:
             X2 = self.dict_vect.transform(self._features_dicts_generator(X))
 
+        # This is succinct but hacky in some sense..
         try:
             return sp.sparse.hstack((X1, X2))
         except UnboundLocalError:
@@ -96,13 +97,18 @@ class TweetVectorizer(CountDictCombinedVectorizer):
         else:
             from analyzer import preprocess, tokenize
             analyzer = lambda s: tokenize(preprocess(s))
-        tweet_text = x.get(u'text')
+        tweet_text = x.get(u'text', '')
         tokens = analyzer(tweet_text)
-        is_reply = x.get(u'in_reply_to_status_id', None) is not None
-        num_tokens = len(tokens)
+        
+        
+        
         return dict(
-            is_reply = is_reply,
-            num_tokens = num_tokens,
+            # true_label = u'neutral' if x['class']['overall'] in ('neutral', 'objective', 'objective-OR-neutral') else x['class']['overall'],
+            # is_reply = x.get(u'in_reply_to_status_id', None) is not None,
+            num_tokens = len(tokens),
+            char_len = 
+            # retweet_count = x.get(u'retweet_count'),
+            # favorite_count = x.get(u'favorite_count')
         )
 
 if __name__ == '__main__':
@@ -114,8 +120,17 @@ if __name__ == '__main__':
     from sklearn.feature_extraction import DictVectorizer
     
     twitter_data = load_semeval(subtask='b', subset='all')
-    
+
     vec = TweetVectorizer(dict_vectorizer=DictVectorizer(), count_vectorizer=CountVectorizer(tokenizer=tokenize, preprocessor=preprocess))
+    
+    import pprint
+    
+    for x in twitter_data[:10]:
+        pprint.pprint(x)
+        pprint.pprint(vec.features_dict(x))
+        print
+        
+    exit(0)
     X = vec.fit_transform(list(twitter_data[:10]))
     
     print X.shape
