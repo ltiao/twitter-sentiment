@@ -124,27 +124,39 @@ class TweetVectorizer(BaseEstimator, TransformerMixin):
         self.count_vect = self.build_count_vectorizer(count_vectorizer)
         self.dict_vect = self.build_dict_vectorizer(dict_vectorizer)
 
+    # Identity function - to support subclassing
     def build_count_vectorizer(self, count_vect):
-        if count_vect is not None:
-            return count_vect
-        return CountVectorizer()
-
+        return count_vect
+        
+    # Identity function - to support subclassing
     def build_dict_vectorizer(self, dict_vect):
-        if dict_vect is not None:
-            return dict_vect
-        return DictVectorizer()
+        return dict_vect
 
     def fit(self, X, y=None):
-        self.count_vect.fit(x.get(u'text') for x in X)
-        self.dict_vect.fit(self._features_dict(x) for x in X)
-        self.feature_names_ = self.count_vect.get_feature_names()
-        self.feature_names_.extend(self.dict_vect.get_feature_names())
+        if self.count_vect is not None:
+            self.count_vect.fit(x.get(u'text') for x in X)
+            self.feature_names_ = self.count_vect.get_feature_names()
+        else:
+            self.feature_names_ = []
+            
+        if self.dict_vect is not None:
+            self.dict_vect.fit(self._features_dict(x) for x in X)
+            self.feature_names_.extend(self.dict_vect.get_feature_names())
+
         return self
 
     def transform(self, X, y=None):
-        X1 = self.count_vect.transform(x.get(u'text') for x in X)
-        X2 = self.dict_vect.transform(self._features_dict(x) for x in X)
-        return sp.sparse.hstack((X1, X2))
+        if self.count_vect is not None:
+            X1 = self.count_vect.transform(x.get(u'text') for x in X)
+            
+        if self.dict_vect is not None:
+            X2 = self.dict_vect.transform(self._features_dict(x) for x in X)
+        
+        try:
+            return sp.sparse.hstack((X1, X2))
+        except AttributeError:
+            try: return X1
+            except AttributeError: return X2
         
     def inverse_transform(self, X):
         raise NotImplementedError('Does not support inverse transform yet.')
@@ -177,7 +189,7 @@ if __name__ == '__main__':
     vec2 = DictVectorizer()
     le = LabelEncoder()
     
-    vec = TweetVectorizer(vec1, vec2)
+    vec = TweetVectorizer(vec1)
     print vec.fit_transform(list(twitter_data[:10])).shape
     print vec.get_feature_names()
     
