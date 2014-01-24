@@ -123,6 +123,8 @@ class TweetVectorizer(BaseEstimator, TransformerMixin):
     def __init__(self, count_vectorizer=None, dict_vectorizer=None):
         self.count_vect = self.build_count_vectorizer(count_vectorizer)
         self.dict_vect = self.build_dict_vectorizer(dict_vectorizer)
+        if self.count_vect is None and self.dict_vect is None:
+            raise ValueError('Must provide at least one vectorizer.')
 
     # Identity function - to support subclassing
     def build_count_vectorizer(self, count_vect):
@@ -154,9 +156,9 @@ class TweetVectorizer(BaseEstimator, TransformerMixin):
         
         try:
             return sp.sparse.hstack((X1, X2))
-        except AttributeError:
+        except UnboundLocalError:
             try: return X1
-            except AttributeError: return X2
+            except UnboundLocalError: return X2
         
     def inverse_transform(self, X):
         raise NotImplementedError('Does not support inverse transform yet.')
@@ -171,7 +173,10 @@ class TweetVectorizer(BaseEstimator, TransformerMixin):
         return self.dict_vect
 
     def _features_dict(self, tweet):
-        analyzer = self.count_vect.build_analyzer()
+        if self.count_vect is not None:
+            analyzer = self.count_vect.build_analyzer()
+        else:
+            analyzer = lambda s: s.split()
         tweet_text = tweet.get(u'text')
         tokens = analyzer(tweet_text)
         is_reply = tweet.get(u'in_reply_to_status_id', None) is not None
@@ -189,8 +194,10 @@ if __name__ == '__main__':
     vec2 = DictVectorizer()
     le = LabelEncoder()
     
-    vec = TweetVectorizer(vec1)
-    print vec.fit_transform(list(twitter_data[:10])).shape
+    vec = TweetVectorizer(dict_vectorizer=vec2, count_vectorizer=vec1)
+    X = vec.fit_transform(list(twitter_data[:10]))
+    print X.shape
+    print X.todense()
     print vec.get_feature_names()
     
     exit(0)
