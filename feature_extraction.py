@@ -13,10 +13,19 @@ from logging import getLogger
 setup_logging()
 logger = getLogger('dataset')
 
-from sklearn.base import BaseEstimator, TransformerMixin
 
 import numpy as np
 import scipy as sp
+
+from sklearn.base import BaseEstimator, TransformerMixin
+
+import regex
+
+from analyzer import preprocess, tokenize
+from pprint import pprint, pformat
+from nltk.data import load
+
+sentence_tokenizer = load('tokenizers/punkt/english.pickle')
 
 class CountDictCombinedVectorizer(BaseEstimator, TransformerMixin):
     
@@ -54,7 +63,7 @@ class CountDictCombinedVectorizer(BaseEstimator, TransformerMixin):
         if self.dict_vect is not None:
             X2 = self.dict_vect.transform(self._features_dicts_generator(X))
 
-        # This is succinct but hacky in some sense..
+        # This is succinct but also quite hacky in some sense..
         try:
             return sp.sparse.hstack((X1, X2))
         except UnboundLocalError:
@@ -85,7 +94,38 @@ class CountDictCombinedVectorizer(BaseEstimator, TransformerMixin):
 
     def features_dict(self, x):
         raise NotImplementedError('Feature extraction dictionary not defined')
+
+def pattern_features_dict(pattern, string, prefix=None, check_match=True, count_matches=True, n_start=0):
+    # Just another way of asking: isinstance(pattern, regex._pattern_type)
+    try:
+        matches = list(pattern.finditer(string))
+    except AttributeError:
+        matches = list(regex.finditer(pattern, string))
+    
+    if prefix is None:
+        prefix = pattern
+
+    result = {}
+    
+    if check_match:
+        result['has_match'] = (matches != [])
+    
+    if count_matches:
+        result['n_matches'] = len(matches)
         
+    if n_start is not None:
+        try:
+            result['match_start'] = matches[n_start].start()
+        except IndexError:
+            # default position if there was no match is defined as -1. 
+            # Could also use something like 140.
+            result['match_start'] = -1
+    
+    for k in result.keys():
+        result['_'.join([prefix, k])] = result.pop(k)
+
+    return result
+
 class TweetVectorizer(CountDictCombinedVectorizer):
 
     def string_value(self, x):
@@ -95,23 +135,53 @@ class TweetVectorizer(CountDictCombinedVectorizer):
         if self.count_vect is not None:
             analyzer = self.count_vect.build_analyzer()
         else:
-            from analyzer import preprocess, tokenize
             analyzer = lambda s: tokenize(preprocess(s))
+        
         tweet_text = x.get(u'text', '')
-        tokens = analyzer(tweet_text)
         
+        word_tokens = analyzer(tweet_text)
+        sent_tokens = sentence_tokenizer.tokenize(tweet_text)
         
-        
-        return dict(
+        # logger.debug(tweet_text)
+        # logger.debug(pformat(word_tokens))
+        # logger.debug(pformat(sent_tokens))
+
+        features_dict_ = dict(
             # true_label = u'neutral' if x['class']['overall'] in ('neutral', 'objective', 'objective-OR-neutral') else x['class']['overall'],
             # is_reply = x.get(u'in_reply_to_status_id', None) is not None,
-            num_tokens = len(tokens),
-            char_len = 
-            # retweet_count = x.get(u'retweet_count'),
-            # favorite_count = x.get(u'favorite_count')
+            char_count = len(tweet_text),
+            word_count = len(word_tokens),
+            sentence_count = len(sent_tokens),
+            retweet_count = x.get(u'retweet_count'),
+            favorite_count = x.get(u'favorite_count'),
         )
 
+        d = {
+            'question_marks': {
+                'pattern': r'\?',
+                'check_match': False,
+                'n_start': None,
+            },
+            'colons': {
+                'pattern': r':\s*\w',
+                'check_match': False,
+                'n_start': 0,
+            },
+        }
+
+        for k in d:
+            
+            features_dict_.update(pattern_features_dict(string=tweet_text, prefix=k, **d[k]))
+        
+        return features_dict_
+
 if __name__ == '__main__':
+
+    # result = pattern_features_dict(r'\w+-\w+', 'this is a quick test of some-patterns', 'hypen_words')
+    # print result
+    # # print result[0].group()
+    # 
+    # exit(0)
 
     from data import load_semeval
     from analyzer import preprocess, tokenize
@@ -122,12 +192,14 @@ if __name__ == '__main__':
     twitter_data = load_semeval(subtask='b', subset='all')
 
     vec = TweetVectorizer(dict_vectorizer=DictVectorizer(), count_vectorizer=CountVectorizer(tokenizer=tokenize, preprocessor=preprocess))
+        
+    pprint(vec.features_dict({u'text': 'this is a test:  this should match. So should this:yes. but not http://t.co/32rnfj3 or :) yep thats it'}))
     
-    import pprint
-    
+    exit(0)    
+        
     for x in twitter_data[:10]:
-        pprint.pprint(x)
-        pprint.pprint(vec.features_dict(x))
+        pprint(x)
+        pprint(vec.features_dict(x))
         print
         
     exit(0)
