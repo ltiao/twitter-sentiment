@@ -193,10 +193,6 @@ if __name__ == '__main__':
 
     vec = TweetVectorizer(dict_vectorizer=DictVectorizer(), count_vectorizer=CountVectorizer(tokenizer=tokenize, preprocessor=preprocess))
         
-    pprint(vec.features_dict({u'text': 'this is a test:  this should match. So should this:yes. but not http://t.co/32rnfj3 or :) yep thats it'}))
-    
-    exit(0)    
-        
     for x in twitter_data[:10]:
         pprint(x)
         pprint(vec.features_dict(x))
