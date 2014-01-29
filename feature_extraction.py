@@ -19,6 +19,7 @@ import scipy as sp
 
 from sklearn.base import BaseEstimator, TransformerMixin
 
+from string import punctuation
 import regex
 
 from analyzer import preprocess, tokenize
@@ -95,12 +96,14 @@ class CountDictCombinedVectorizer(BaseEstimator, TransformerMixin):
     def features_dict(self, x):
         raise NotImplementedError('Feature extraction dictionary not defined')
 
-def pattern_features_dict(pattern, string, prefix=None, check_match=True, count_matches=True, n_start=0):
+def pattern_features_dict(pattern, string, prefix=None, check_match=False, count_matches=False, n_start=None):
     # Just another way of asking: isinstance(pattern, regex._pattern_type)
     try:
         matches = list(pattern.finditer(string))
     except AttributeError:
         matches = list(regex.finditer(pattern, string))
+    
+    logger.debug('{}:\n\tPattern: {}\n\tMatches: {}'.format(prefix, pattern, [mo.group() for mo in matches]))
     
     if prefix is None:
         prefix = pattern
@@ -108,10 +111,10 @@ def pattern_features_dict(pattern, string, prefix=None, check_match=True, count_
     result = {}
     
     if check_match:
-        result['has_match'] = (matches != [])
+        result['match_exists'] = (matches != [])
     
     if count_matches:
-        result['n_matches'] = len(matches)
+        result['match_count'] = len(matches)
         
     if n_start is not None:
         try:
@@ -146,6 +149,8 @@ class TweetVectorizer(CountDictCombinedVectorizer):
         # logger.debug(pformat(word_tokens))
         # logger.debug(pformat(sent_tokens))
 
+        hashtags = x.get(u'entities', {}).get(u'hashtags', [])
+
         features_dict_ = dict(
             # true_label = u'neutral' if x['class']['overall'] in ('neutral', 'objective', 'objective-OR-neutral') else x['class']['overall'],
             # is_reply = x.get(u'in_reply_to_status_id', None) is not None,
@@ -154,34 +159,39 @@ class TweetVectorizer(CountDictCombinedVectorizer):
             sentence_count = len(sent_tokens),
             retweet_count = x.get(u'retweet_count'),
             favorite_count = x.get(u'favorite_count'),
+            hashtags_count = len(hashtags)
         )
 
         d = {
             'question_marks': {
                 'pattern': r'\?',
-                'check_match': False,
-                'n_start': None,
+                'count_matches': True,
             },
             'colons': {
                 'pattern': r':\s*\w',
-                'check_match': False,
+                'count_matches': True,
                 'n_start': 0,
             },
+            'repeated': {
+                'pattern': r'(\w)\1{2,}',
+                'count_matches': True,
+            },
+            'all_caps': {
+                'pattern': r'\b[A-Z]{2,}\b',
+                'count_matches': True,
+            },
+            'punctuation_marks': {
+                'pattern': r'[{0}]'.format(regex.escape(punctuation)),
+                'count_matches': True,
+            }
         }
 
         for k in d:
-            
             features_dict_.update(pattern_features_dict(string=tweet_text, prefix=k, **d[k]))
         
         return features_dict_
 
 if __name__ == '__main__':
-
-    # result = pattern_features_dict(r'\w+-\w+', 'this is a quick test of some-patterns', 'hypen_words')
-    # print result
-    # # print result[0].group()
-    # 
-    # exit(0)
 
     from data import load_semeval
     from analyzer import preprocess, tokenize
@@ -194,12 +204,13 @@ if __name__ == '__main__':
     vec = TweetVectorizer(dict_vectorizer=DictVectorizer(), count_vectorizer=CountVectorizer(tokenizer=tokenize, preprocessor=preprocess))
         
     for x in twitter_data[:10]:
+        features = vec.features_dict(x)
         pprint(x)
-        pprint(vec.features_dict(x))
+        pprint(features)
         print
         
     exit(0)
-    X = vec.fit_transform(list(twitter_data[:10]))
+    X = vec.fit_transform(list(twitter_data[100:200]))
     
     print X.shape
     print vec.get_feature_names()

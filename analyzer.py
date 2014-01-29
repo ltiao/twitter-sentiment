@@ -10,7 +10,7 @@
 # both preprocessing (normalization) and also tokenization
 # in both Python and Java (and other languages) as-is. 
 # (similar to UA-Parser: https://github.com/tobie/ua-parser)
-import regex as re
+import regex as re # http://xkcd.com/1171/
 from htmlentitydefs import name2codepoint
 from nltk.tokenize import RegexpTokenizer
 from nltk.tokenize.api import TokenizerI
