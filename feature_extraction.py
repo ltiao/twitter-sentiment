@@ -5,10 +5,9 @@
 #
 # License: ?
 
-# TODO: 
+# TODO:
 #   * Documentation
 #   * Doctests
-#   * Implement Inverse Transform
 #   * Unit tests
 
 # Setup Logging
@@ -34,12 +33,13 @@ from analyzer import preprocess, tokenize
 
 sentence_tokenizer = load('tokenizers/punkt/english.pickle')
 
+
 class ExtractorPipeline(Pipeline):
 
     def __init__(self, get_names_from=None, *args, **kwargs):
         self.get_names_from = get_names_from
         super(ExtractorPipeline, self).__init__(*args, **kwargs)
-    
+
     def get_feature_names(self):
         if self.get_names_from is not None:
             trans = self.named_steps.get(self.get_names_from)
@@ -47,42 +47,44 @@ class ExtractorPipeline(Pipeline):
             _, trans = self.steps[-1]
         return trans.get_feature_names()
 
+
 class TweetTextExtractor(BaseEstimator, TransformerMixin):
-        
+
     def fit(self, X=None, y=None):
         return self
-        
+
     def transform(self, X, y=None):
         return [self._text(x) for x in X]
-    
+
     def _text(self, x):
         return x.get(u'text', '')
 
+
 class TweetFeaturesExtractor(BaseEstimator, TransformerMixin):
-        
+
     def fit(self, X=None, y=None):
         return self
-    
+
     def transform(self, X, y=None):
         return [self._features(x) for x in X]
-    
+
     def _features(self, x):
         analyzer = lambda s: tokenize(preprocess(s))
-        
+
         tweet_text = x.get(u'text', '')
-        
+
         word_tokens = analyzer(tweet_text)
         sent_tokens = sentence_tokenizer.tokenize(tweet_text)
         hashtags = x.get(u'entities', {}).get(u'hashtags', [])
 
         features_dict_ = dict(
-            is_reply = x.get(u'in_reply_to_status_id', None) is not None,
-            char_count = len(tweet_text),
-            word_count = len(word_tokens),
-            sentence_count = len(sent_tokens),
-            retweet_count = x.get(u'retweet_count'),
-            favorite_count = x.get(u'favorite_count'),
-            hashtags_count = len(hashtags)
+            is_reply=x.get(u'in_reply_to_status_id', None) is not None,
+            char_count=len(tweet_text),
+            word_count=len(word_tokens),
+            sentence_count=len(sent_tokens),
+            retweet_count=x.get(u'retweet_count'),
+            favorite_count=x.get(u'favorite_count'),
+            hashtags_count=len(hashtags)
         )
 
         d = {
@@ -110,8 +112,9 @@ class TweetFeaturesExtractor(BaseEstimator, TransformerMixin):
         }
 
         for k in d:
-            features_dict_.update(self._pattern_features_dict(string=tweet_text, prefix=k, **d[k]))
-        
+            features_dict_.update(
+                self._pattern_features_dict(string=tweet_text, prefix=k, **d[k]))
+
         return features_dict_
 
     def _pattern_features_dict(self, pattern, string, prefix=None, check_match=False, count_matches=False, n_start=None):
@@ -138,7 +141,7 @@ class TweetFeaturesExtractor(BaseEstimator, TransformerMixin):
             try:
                 result['match_start'] = matches[n_start].start()
             except IndexError:
-                # default position if there was no match is defined as -1. 
+                # default position if there was no match is defined as -1.
                 # Could also use something like 140.
                 result['match_start'] = -1
 
@@ -146,13 +149,16 @@ class TweetFeaturesExtractor(BaseEstimator, TransformerMixin):
             result['_'.join([prefix, k])] = result.pop(k)
 
         return result
-        
+
+
 def make_text_extractor():
     text_steps = [
         ('text_extract', TweetTextExtractor()),
-        ('count_vect', CountVectorizer(tokenizer=tokenize, preprocessor=preprocess))
+        ('count_vect',
+         CountVectorizer(tokenizer=tokenize, preprocessor=preprocess))
     ]
     return ExtractorPipeline(steps=text_steps)
+
 
 def make_feature_extractor():
     feature_steps = [
@@ -161,9 +167,10 @@ def make_feature_extractor():
     ]
     return ExtractorPipeline(steps=feature_steps)
 
+
 def make_combined_extractor():
     extractors = [
-        ('text', make_text_extractor()), 
+        ('text', make_text_extractor()),
         ('features', make_feature_extractor())
     ]
     return FeatureUnion(extractors)
@@ -171,20 +178,21 @@ def make_combined_extractor():
 if __name__ == '__main__':
 
     from data import load_semeval
-    
+
     twitter_data = load_semeval(subtask='b', subset='all')
-    
+
     combined_vec = make_combined_extractor()
-    
+
     for x in twitter_data[:10]:
         _, feature_extractor = combined_vec.transformer_list[1]
-        features = feature_extractor.named_steps['features_extract']._features(x)
+        features = feature_extractor.named_steps[
+            'features_extract']._features(x)
         pprint(x)
         pprint(features)
         print
-        
+
     exit(0)
-    
+
     X = combined_vec.fit_transform(list(twitter_data[:10]))
 
     print X.shape
