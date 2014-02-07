@@ -41,9 +41,9 @@ def prefix_dict_keys(d, prefix):
         d['_'.join((prefix, k))] = d.pop(k)
     return d
 
-def match_start(m, n):
+def match_start(match_objects, n):
     try:
-        return m[n].start()
+        return match_objects[n].start()
     except IndexError:
         return -1
 
@@ -79,6 +79,7 @@ class TweetTextExtractor(BaseEstimator, TransformerMixin):
 
     def _extract_text(self, x):
         return x.get(u'text', '')
+
 
 class FeaturesDictExtractor(BaseEstimator, TransformerMixin):
 
