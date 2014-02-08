@@ -24,22 +24,29 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.pipeline import FeatureUnion, Pipeline
+from sklearn.externals import six
 
 from pprint import pprint, pformat
 from string import punctuation
+from collections import Counter
+
 from nltk.data import load
 from nltk import pos_tag
 import regex
 
-from analyzer import preprocess, tokenize
+from analyzer import TweetPreprocessor, TweetTokenizer
+
+preprocess = TweetPreprocessor()
+tokenize = TweetTokenizer()
 
 sentence_tokenizer = load('tokenizers/punkt/english.pickle')
 upenn_tagset = load('help/tagsets/upenn_tagset.pickle')
 
-def prefix_dict_keys(d, prefix):
-    for k in d.keys():
-        d['_'.join((prefix, k))] = d.pop(k)
-    return d
+class Bunch(dict):
+
+    def __init__(self, *args, **kwargs):
+        self.update(*args, **kwargs)
+        self.__dict__ = self
 
 def match_start(match_objects, n):
     try:
@@ -47,15 +54,51 @@ def match_start(match_objects, n):
     except IndexError:
         return -1
 
-def pattern_features_dict(pattern, string, **fn_names):
+def ends_with(match_objects):
+    try:
+        match = match_objects[-1]
+    except IndexError:
+        return False
+    return match.end() == len(match.string)
+
+MATCH_FUNCS = dict(
+    exists = lambda m: m != [],
+    count = lambda m: len(m),
+    start_pos = lambda m: match_start(m, 0),
+    ends_with = ends_with
+)
+
+def get_match_func(func):
+    if isinstance(func, six.string_types):
+        try:
+            func = MATCH_FUNCS[func]
+        except KeyError:
+            raise ValueError('{0} is not a valid scoring value. Valid options are {1}'.format(func, sorted(MATCH_FUNCS.keys())))        
+    return func
+
+def prefix_dict_keys(d, prefix):
+    for k in d.keys():
+        d['_'.join((prefix, k))] = d.pop(k)
+    return d
+
+def pattern_features_dict(pattern, string, *fn_names, **funcs):
     # Just another way of asking: isinstance(pattern, regex._pattern_type)
     try:
         matches = list(pattern.finditer(string))
     except AttributeError:
         matches = list(regex.finditer(pattern, string))
 
-    return dict((fn_name, fn(matches)) for fn_name, fn in fn_names.items())
+    result = {}   
+    
+    for fn_name, fn in funcs.items():
+        result[fn_name] = fn(matches)
+    
+    for fn_name in fn_names:
+        fn = get_match_func(fn_name)
+        result[fn_name] = fn(matches)
 
+    return result
+  
 class ExtractorPipeline(Pipeline):
 
     def __init__(self, get_names_from=None, *args, **kwargs):
@@ -75,146 +118,107 @@ class TweetTextExtractor(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X, y=None):
-        return [self._extract_text(x) for x in X]
+        return [self.extract_text(x) for x in X]
 
-    def _extract_text(self, x):
+    def extract_text(self, x):
         return x.get(u'text', '')
 
+# Precompile regex patterns for efficiency
+REGEX_PATTERNS = dict(
+    question_mark = regex.compile(r'\?+'),
+    exclamation_mark = regex.compile(r'!+'),
+    colons = regex.compile(r':\s*\w'),
+    repeated_chars = regex.compile(r'(\w)\1{2,}'),
+    begins_caps = regex.compile(r'\b[A-Z][A-Za-z]+\b'),
+    all_caps = regex.compile(r'\b[A-Z]{2,}\b')
+)
 
-class FeaturesDictExtractor(BaseEstimator, TransformerMixin):
+class TweetWrapper(Bunch):
 
-    # TODO: Should the feature activation 
-    # options be defined as kwargs in fit instead?
+    def __init__(self, *args, **kwargs):
+        super(TweetWrapper, self).__init__(*args, **kwargs)
+        self.word_tokens = tokenize(preprocess(self.get(u'text', '')))  
+        self.sent_tokens = sentence_tokenizer.tokenize(self.get(u'text', ''))
+        self.pos_tag = pos_tag(self.word_tokens)
+
+    def extract(self, *features):
+        result = {}
+        for feature_name in features:
+            feature = getattr(self, feature_name, {})
+            if isinstance(feature, dict):
+                feature = prefix_dict_keys(feature, feature_name)
+                result.update(feature)
+            else:
+                result[feature_name] = feature
+        return result
+
+    @property
+    def pos_count(self):
+        pos_freq = Counter(tag for _, tag in self.pos_tag)
+        return dict(('{}'.format(pos), pos_freq.get(pos, 0)) for pos in upenn_tagset.keys())
+
+    @property
+    def is_reply(self):
+        return self.get(u'in_reply_to_status_id', None) is not None
+
+    @property
+    def char_count(self):
+        return len(self.get(u'text', ''))
+
+    @property
+    def word_count(self):
+        return len(self.word_tokens)
+        
+    @property
+    def sentence_count(self):
+        return len(self.sent_tokens)
+
+    @property
+    def hashtag_count(self):
+        return len(self.get(u'entities', {}).get(u'hashtags', []))
+
+    @property
+    def retweet_count(self):
+        return self.get(u'retweet_count', 0)
+
+    @property
+    def favorite_count(self):
+        return self.get(u'favorite_count', 0)
+
+    @property
+    def question_mark(self):
+        return pattern_features_dict(REGEX_PATTERNS['question_mark'], self.text, 'count', 'start_pos')
+
+    @property
+    def exclamation_mark(self):
+        return pattern_features_dict(REGEX_PATTERNS['exclamation_mark'], self.text, 'count', 'start_pos')
+
+    @property
+    def colons(self):
+        return pattern_features_dict(REGEX_PATTERNS['colons'], self.text, 'count', 'start_pos')
+
+    @property
+    def repeated_chars(self):
+        return pattern_features_dict(REGEX_PATTERNS['repeated_chars'], self.text, 'count')
+
+    @property
+    def begins_caps(self):
+        return pattern_features_dict(REGEX_PATTERNS['begins_caps'], self.text, 'count')
+
+    @property
+    def all_caps(self):
+        return pattern_features_dict(REGEX_PATTERNS['all_caps'], self.text, 'count')
+
+class TweetFeaturesExtractor(BaseEstimator, TransformerMixin):
+
     def __init__(self, features=None):
-        if features is not None:
-            # TODO: Ensure iterable
-            self.features = features
-        else:
-            self.features = self.get_all_possible_feature_names()
-
-    def get_all_possible_feature_names(self):
-        """the suffix (*) of all callable attributes of the form 'feature__*'"""
-        return [attr.split('__', 1)[1] for attr in dir(self) if callable(getattr(self, attr)) and attr.split('__', 1)[0] == 'feature']
+        self.features = features
 
     def fit(self, X=None, y=None):
         return self
 
     def transform(self, X, y=None):
-        return [self._extract_features(self.preprocess(x)) for x in X]
-
-    def preprocess(self, x):
-        """Identity function. 
-        To be overriden by subclass
-        """
-        return x
-
-    # TODO: fix so that the feature names are 
-    # the same as those defined in self.features
-    # rather than having to return a dict that
-    # defines the key name again. (The key issue
-    # here is support for feature__* functions with
-    # multiple outputs)
-    def _extract_features(self, x):
-        features = {}
-        for feature in self.features:
-            feature_func = getattr(self, 'feature__{fn_name}'.format(fn_name=feature), lambda x: {})
-            features.update(feature_func(x))
-        return features
-
-class TweetFeaturesExtractor(FeaturesDictExtractor):
-
-    def preprocess(self, x):
-        text = x.get(u'text', '')
-        
-        x['word_tokens'] = tokenize(preprocess(text))
-        x['sentence_tokens'] = sentence_tokenizer.tokenize(text)
-        
-        return x
-    
-    def feature__char_count(self, x):
-        return dict(char_count=len(x.get(u'text', '')))
-    
-    def feature__is_reply(self, x):
-        return dict(is_reply=x.get(u'in_reply_to_status_id', None) is not None)
-    
-    def feature__word_count(self, x):
-        return dict(word_count=len(x.get(u'word_tokens', [])))
-        
-    def feature__char_count(self, x):
-        return dict(char_count=len(x.get(u'text', '')))
-    
-    def feature__sentence_count(self, x):
-        return dict(word_count=len(x.get(u'word_tokens', [])))
-    
-    def feature__hashtag_count(self, x):
-        return dict(hashtag_count=len(x.get(u'entities', {}).get(u'hashtags', [])))
-
-    def feature__retweet_count(self, x):
-        return dict(retweet_count=x.get(u'retweet_count', 0))
-                
-    def feature__favorite_count(self, x):
-        return dict(favorite_count=x.get(u'favorite_count', 0))
-
-    def feature__question_marks(self, x):
-        return prefix_dict_keys(
-            pattern_features_dict(
-                r'\?', 
-                x.get(u'text', ''), 
-                count=lambda m: len(m)
-            ), 
-            'question_mark'
-        )
-
-    def feature__colons(self, x):
-        return prefix_dict_keys(
-            pattern_features_dict(
-                r':\s*\w', 
-                x.get(u'text', ''), 
-                count=lambda m: len(m), 
-                start_pos=lambda m: match_start(m, 0)
-            ), 
-            'colons'
-        )
-        
-    def feature__repeated(self, x):
-        return prefix_dict_keys(
-            pattern_features_dict(
-                r'(\w)\1{2,}', 
-                x.get(u'text', ''), 
-                count=lambda m: len(m), 
-            ), 
-            'repeated'
-        )
-    
-    def feature__all_caps(self, x):
-        return prefix_dict_keys(
-            pattern_features_dict(
-                r'\b[A-Z]{2,}\b', 
-                x.get(u'text', ''), 
-                count=lambda m: len(m), 
-            ), 
-            'all_caps'
-        )
-        
-    def feature__start_caps(self, x):
-        return prefix_dict_keys(
-            pattern_features_dict(
-                r'\b[A-Z][A-Za-z]+\b', 
-                x.get(u'text', ''), 
-                count=lambda m: len(m), 
-            ), 
-            'start_caps'
-        )
-        
-    def feature__punctuation_marks(self, x):
-        return prefix_dict_keys(
-            pattern_features_dict(
-                r'[{0}]'.format(regex.escape(punctuation)),
-                x.get(u'text', ''), 
-                count=lambda m: len(m), 
-            ), 
-            'punctuation_marks'
-        )
+        return [TweetWrapper(x).extract(*self.features) for x in X]
 
 # TODO: Construct as a Pipeline like others defined
 # here but is not as trivial as `fit_transform` does 

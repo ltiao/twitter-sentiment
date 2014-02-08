@@ -10,14 +10,20 @@
 # both preprocessing (normalization) and also tokenization
 # in both Python and Java (and other languages) as-is. 
 # (similar to UA-Parser: https://github.com/tobie/ua-parser)
+
 import regex as re # http://xkcd.com/1171/
 from htmlentitydefs import name2codepoint
+
 from nltk.tokenize import RegexpTokenizer
 from nltk.tokenize.api import TokenizerI
 from nltk.internals import convert_regexp_to_nongrouping
+from nltk import pos_tag
+
 from collections import defaultdict, OrderedDict
 
-__all__ = ['tokenize', 'preprocess']
+from sklearn.base import BaseEstimator, TransformerMixin
+
+__all__ = ['TweetTokenizer', 'TweetPreprocessor']
 
 def repl_html_entity(m):
     entity = m.group('entity') # get the entity name or number
@@ -95,23 +101,81 @@ REGEXES['words']['regex'] = re.compile(
     \S                          # Everything else that isn't whitespace.
     """, re.UNICODE | re.VERBOSE | re.IGNORECASE)
 
-def preprocess(string):
-    for k in ('html_entity', 'url', 'mention', 'repeated_chars'):
-        repl = REGEXES[k]['repl']
-        string = REGEXES[k]['regex'].sub(repl, string)
-    return string
+negation_words = [
+    'never',
+    'no',
+    'nothing',
+    'nowhere',
+    'noone',
+    'none',
+    'not',
+    'havent',
+    'hasnt',
+    'hadnt',
+    'cant',
+    'couldnt',
+    'shouldnt',
+    'wont',
+    'wouldnt',
+    'dont',
+    'doesnt',
+    'didnt',
+    'isnt',
+    'arent',
+    'aint',
+    'n\'t',
+    'hardly',
+    'far from',
+]
 
-class TwitterTokenizer(TokenizerI):
+end_punctuation = ['.', ':', ';', '!', '?']
 
-    def __init__(self):
+REGEXES['negation']['regex'] = re.compile(
+    r"""
+    (?<=({0})\s+)
+    [^{1}]*
+    (?=[{1}]|$)
+    """.format(
+        '|'.join(re.escape(word) for word in negation_words), 
+        r''.join(re.escape(punc) for punc in end_punctuation)
+    ), 
+    flags = re.IGNORECASE | re.VERBOSE
+)
+
+REGEXES['negation']['repl'] = lambda mo: ' '.join('{}_NEG'.format(token) for token in mo.group().split())
+
+class TweetPreprocessor(object):
+
+    def __init__(self, *steps):
+        if steps:
+            self.steps = steps
+        else:
+            self.steps = ['html_entity', 'url', 'mention', 'repeated_chars']
+    
+    def __call__(self, text):
+        return self.preprocess(text)
+
+    def preprocess(self, text):
+        for k in self.steps:
+            repl = REGEXES[k]['repl']
+            text = REGEXES[k]['regex'].sub(repl, text)
+        return text
+
+class TweetTokenizer(TokenizerI):
+
+    def __init__(self, pos_tagging=False):
+        self.pos_tagging = pos_tagging
         pattern = ur'|'.join(REGEXES[k]['regex'].pattern for k in ('url', 'emoticons', 'mention', 'hashtag', 'words'))
         nongrouping_pattern = convert_regexp_to_nongrouping(pattern)
         self._regexp = re.compile(nongrouping_pattern, flags=re.UNICODE | re.MULTILINE | re.VERBOSE | re.IGNORECASE)
 
-    def tokenize(self, text):
-        return self._regexp.findall(text)
-
     def __call__(self, text):
       return self.tokenize(text)
-      
-tokenize = TwitterTokenizer()
+
+    def tokenize(self, text):
+        tokens = self._regexp.findall(text)
+        if self.pos_tagging:
+            return ['_'.join(tagged) for tagged in pos_tag(tokens)]
+        else:
+            return tokens
+            

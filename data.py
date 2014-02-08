@@ -13,82 +13,46 @@ from logging import getLogger
 setup_logging()
 logger = getLogger('dataset')
 
-from analyzer import preprocess, tokenize
+from analyzer import TweetPreprocessor, TweetTokenizer
+from feature_extraction import make_text_extractor, Bunch
+from csv import reader
 
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.feature_extraction import DictVectorizer
-
-from sklearn.preprocessing import LabelEncoder
-from sklearn.datasets.base import Bunch
-
-from sklearn.base import BaseEstimator, TransformerMixin
+from collections import namedtuple
 
 import numpy as np
 import scipy as sp
+import csv
+import yaml
 
-def load_semeval_vectorized(subtask='b', subset='all'):
-    try:
-        from pymongo import MongoClient
-    except ImportError:
-        raise ImportError('pymongo must be installed to retrieve data from MongoDB')
+class SMS(namedtuple('SMS', ['sms_id_str', 'user_id_str', 'label', 'text'])):
 
-    client = MongoClient()
-    db = client.twitter_database
-    db_labeled_tweets = db.labeled_tweets
+    def _asdict(self):
+        'Return a new OrderedDict which maps field names to their values'
+        return dict(zip(self._fields, self))
 
+def load_sms(subtask='b'):
+    
     if subtask == 'a':
         raise NotImplementedError('SemEval-2013 Task 2 Subtask A data not yet supported')
     elif subtask == 'b':
         
-        q = {
-            u'text': {'$exists': True}, 
-            u'class.overall': {'$exists': True}
-        }
-
-        tweets = list(db_labeled_tweets.find(q))
-
-        vect = CountVectorizer(tokenizer=tokenize, preprocessor=preprocess)#, ngram_range=(1, 2))
-        le = LabelEncoder()
+        filename = 'data/cache/sms_b.yml'
         
-        if subset == 'all':
-            data = vect.fit_transform(tweet.get(u'text') for tweet in tweets)
-            target = le.fit_transform(
-                [u'neutral' if tweet['class']['overall'] in ('neutral', 'objective', 'objective-OR-neutral') else tweet['class']['overall'] for tweet in tweets]
-            )
-            docs = tweets
-        elif subset == 'train':
-            training_tweets = [tweet for tweet in tweets if tweet['class']['training']]
-            data = vect.fit_transform(tweet.get(u'text') for tweet in training_tweets)
-            target = le.fit_transform(
-                [u'neutral' if tweet['class']['overall'] in ('neutral', 'objective', 'objective-OR-neutral') else tweet['class']['overall'] for tweet in training_tweets]
-            )
-            docs = training_tweets
-        elif subset == 'test':
-            training_tweets = [tweet for tweet in tweets if tweet['class']['training']]
-            vect.fit(tweet.get(u'text') for tweet in training_tweets)
-            le.fit(
-                [u'neutral' if tweet['class']['overall'] in ('neutral', 'objective', 'objective-OR-neutral') else tweet['class']['overall'] for tweet in training_tweets]
-            )
-            testing_tweets = [tweet for tweet in tweets if not tweet['class']['training']]
-            data = vect.transform(tweet.get(u'text') for tweet in testing_tweets)
-            target = le.transform(
-                [u'neutral' if tweet['class']['overall'] in ('neutral', 'objective', 'objective-OR-neutral') else tweet['class']['overall'] for tweet in testing_tweets]
-            )
-            docs = testing_tweets
-        else:
-            raise ValueError("'{}' is not a valid subset: should be one of ['train', 'test', 'all']".format(subset))
+        try:
+            with open(filename, 'r') as infile:
+                result = yaml.load(infile)
+        except IOError:        
+            provided_filename = 'data/2download/test/gold/sms-test-gold-B.tsv'
+            with open(provided_filename, 'r') as tsv:
+                result = [sms._asdict() for sms in map(SMS._make, csv.reader(tsv, dialect='excel-tab'))]
             
+            with open(filename, 'w+') as outfile:
+                yaml.dump(result, outfile, default_flow_style=False)
+
+        return result
     else:
         raise ValueError("'{}' is not a valid subtask: should be one of ['a', 'b']".format(subtask))
-
-    return Bunch(
-            data = data,
-            target = target,
-            target_names = le.classes_,
-            label_encoder = le,
-            vectorizer = vect,
-            docs = np.asarray(docs)
-        )
+    
 
 def load_semeval(subtask='b', subset='all'):
     try:
@@ -117,6 +81,30 @@ def load_semeval(subtask='b', subset='all'):
         return db_labeled_tweets.find(q)
     else:
         raise ValueError("'{}' is not a valid subtask: should be one of ['a', 'b']".format(subtask))
+
+def load_semeval_vectorized(vect=make_text_extractor(), subtask='b', subset='all'):
+    
+    data = list(load_semeval(subtask, subset))
+    
+    if subset == 'train':
+        return
+    
+    
+
+def train_test_concat(X_train, X_test, y_train, y_test):
+    # TODO: Throw exception or normalise on XOR case
+    if sp.sparse.issparse(X_train) and sp.sparse.issparse(X_test):
+        vstack = sp.sparse.vstack
+    else:
+        vstack = np.vstack
+
+    return vstack((X_train, X_test)), np.concatenate((y_train, y_test))
+
+def train_test_cv_generator(X_train, X_test, y_train, y_test):
+    test_start_index = X_train.shape[0]
+    test_end_index = test_start_index + X_test.shape[0]
+    # not a very exciting generator. only has one item
+    yield (np.arange(test_start_index), np.arange(test_start_index, test_end_index))
 
 if __name__ == '__main__':
     
