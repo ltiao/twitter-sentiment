@@ -63,7 +63,7 @@ for task in tasks:
             rate_limit_reset = twitter_api.application.rate_limit_status(resources='statuses')[u'resources'][u'statuses'][u'/statuses/show/:id'][u'reset']
             for i, row in enumerate(csv.reader(tsv, dialect='excel-tab')):
                 tweet_id = int(row[0])
-                logger.info('[{}] Processing line {}/{} (tweet: {}): {:.2f}% complete...'.format(dataset_filename.format(task=task), i, num_lines, tweet_id, i/float(num_lines)*100))
+                logger.info('[{}] Processing line {}/{} (tweet: {}): {:.2%} complete...'.format(dataset_filename.format(task=task), i, num_lines, tweet_id, i/float(num_lines)))
                 if db_tweets.find_one({'_id': tweet_id}): 
                     logger.info('\t- tweet {} has already been retrieved and stored.'.format(tweet_id))
                     continue
